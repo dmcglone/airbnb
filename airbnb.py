@@ -2,8 +2,10 @@
 # ============================================================================
 # Airbnb web site scraper, for analysis of Airbnb listings
 # Tom Slee, 2013--2014
+
 #
 # function naming conventions:
+
 #   ws_get = get from web site
 #   db_get = get from database
 #   db_add = add to the database
@@ -51,11 +53,11 @@ logging.basicConfig(format='%(message)s', level=logging.INFO)
 
 # global database connection
 conn = sqlanydb.connect(
-        userid="DBA",
-        password="sql",
-        serverName=DB_SERVERNAME,
-        databasename=DB_NAME,
-        databasefile=DB_FILE)
+    userid="DBA",
+    password="sql",
+    serverName=DB_SERVERNAME,
+    databasename=DB_NAME,
+    databasefile=DB_FILE)
 
 
 def db_add_survey(search_area):
@@ -548,11 +550,13 @@ def get_room_info_from_page(page, room_id, survey_id, flag):
                 logging.warning("No address found for room " + str(room_id))
 
         # -- reviews --
-        temp = tree.xpath(
-            "//span[@itemprop='reviewCount']/text()"
-            )
+        temp = tree.xpath("//div[@id='room']/div[@id='reviews']//h4/text()")
         if len(temp) > 0:
-            reviews = temp[0]
+            reviews = temp[0].strip()
+            reviews = reviews.split('+')[0]
+            reviews = reviews.split(' ')[0].strip()
+            if reviews == "No":
+                reviews = 0
         else:
             # try old page match
             temp = tree.xpath(
@@ -826,9 +830,8 @@ def search_page_url(search_area_name, guests, neighborhood, room_type,
     return url
 
 
-def ws_get_search_page_info(
-        survey_id, search_area_name, room_type, neighborhood, guests,
-        page_number, flag):
+def ws_get_search_page_info(survey_id, search_area_name, room_type,
+                            neighborhood, guests, page_number, flag):
     logging.info(room_type + ", " +
                  neighborhood + ", " +
                  str(guests) + " guests, " +
