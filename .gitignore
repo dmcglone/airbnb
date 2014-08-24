@@ -1,0 +1,7 @@
+./backup/*
+./db/*
+./doc/*
+./img/*
+./maps/*
+./res/*
+./sqlite/*
