@@ -15,18 +15,17 @@
 import re
 import logging
 import argparse
-import sys, traceback
+import sys
+import traceback
 import time
 import random
 #import codecs
-#import requests
 #from cssselect import HTMLTranslator, SelectorError
 import urllib.request
 import urllib.parse
 from lxml import html
 import sqlanydb
 import webbrowser
-import subprocess
 import os
 #from PySide import QtGui
 #from PySide import QtCore
@@ -35,73 +34,59 @@ import os
 
 # CONSTANTS
 URL_ROOM_ROOT = "http://www.airbnb.com/rooms/"
-URL_HOST_ROOT="https://www.airbnb.com/users/show/"
-URL_TIMEOUT=10.0
+URL_HOST_ROOT = "https://www.airbnb.com/users/show/"
+URL_TIMEOUT = 10.0
 FILL_MAX_ROOM_COUNT = 50000
 SEARCH_MAX_PAGES = 25
 SEARCH_MAX_GUESTS = 16
-FLAGS_ADD=1
-FLAGS_PRINT=9
-FLAGS_INSERT_REPLACE=True
-FLAGS_INSERT_NO_REPLACE=False
-DB_SERVERNAME="airbnb"
-DB_NAME="airbnb"
-DB_FILE=os.getcwd() + "/db/airbnb.db"
-
+FLAGS_ADD = 1
+FLAGS_PRINT = 9
+FLAGS_INSERT_REPLACE = True
+FLAGS_INSERT_NO_REPLACE = False
+DB_SERVERNAME = "airbnb"
+DB_NAME = "airbnb"
+DB_FILE = os.getcwd() + "/db/airbnb.db"
 
 logging.basicConfig(format='%(message)s', level=logging.INFO)
 
 # global database connection
-conn = None
+conn = sqlanydb.connect(
+        userid="DBA",
+        password="sql",
+        serverName=DB_SERVERNAME,
+        databasename=DB_NAME,
+        databasefile=DB_FILE)
 
-# return a database connection (singleton-like)
-def dbconn():
-    try:
-        # if the connection is already open, return the connection
-        cur=conn.cursor()
-        cur.close()
-        return conn
-    except:
-        # make a connection and return it
-        conn = sqlanydb.connect(
-                userid="DBA",
-                password="sql",
-                serverName=DB_SERVERNAME,
-                databasename=DB_NAME,
-                databasefile=DB_FILE
-        )
-        return conn
 
 def db_add_survey(search_area):
     try:
-        cur=dbconn().cursor()
+        cur = conn.cursor()
         cur.execute("call add_survey(?)", (search_area,))
         sql_identity = """select @@identity"""
         cur.execute(sql_identity, ())
         survey_id = cur.fetchone()[0]
-        cur.execute("""
-            select survey_id, survey_date, survey_description, search_area_id
-            from survey
-            where survey_id = ?""",
-            (survey_id,))
+        cur.execute("""select survey_id, survey_date,
+        survey_description, search_area_id
+        from survey where survey_id = ?""", (survey_id,))
         (survey_id,
          survey_date,
          survey_description,
-         search_area_id ) = cur.fetchone()
+         search_area_id) = cur.fetchone()
         conn.commit()
         cur.close()
         print("\nSurvey added:\n"
-                + "\n\tsurvey_id=" + str(survey_id)
-                + "\n\tsurvey_date=" + str(survey_date)
-                + "\n\tsurvey_description=" + survey_description
-                + "\n\tsearch_area_id=" + str(search_area_id))
+              + "\n\tsurvey_id=" + str(survey_id)
+              + "\n\tsurvey_date=" + str(survey_date)
+              + "\n\tsurvey_description=" + survey_description
+              + "\n\tsearch_area_id=" + str(search_area_id))
     except:
         logging.error("Failed to add survey for " + search_area)
-        sys.exit()
+        traceback.print_exc(file=sys.stdout)
+
 
 def list_search_area_info(search_area):
     try:
-        cur=dbconn().cursor()
+        cur = conn.cursor()
         cur.execute("""
                 select search_area_id
                 from search_area where name=?
@@ -110,23 +95,30 @@ def list_search_area_info(search_area):
         cur.close()
         count = len(result_set)
         if count == 1:
-            print("\nThere is one search area called", str(search_area), "in the database.")
+            print("\nThere is one search area called",
+                  str(search_area),
+                  "in the database.")
         elif count > 1:
-            print("\nThere are", str(count), "cities called", str(search_area), "in the database.")
+            print("\nThere are", str(count),
+                  "cities called", str(search_area),
+                  "in the database.")
         elif count < 1:
-            print("\nThere are no cities called", str(search_area), "in the database.")
+            print("\nThere are no cities called",
+                  str(search_area),
+                  "in the database.")
             sys.exit()
-        sql_neighborhood="""select count(*) from neighborhood
+        sql_neighborhood = """select count(*) from neighborhood
         where search_area_id = ? """
-        sql_search_area="""select count(*) from search_area where search_area_id = ?"""
+        sql_search_area = """select count(*) from search_area
+        where search_area_id = ?"""
         for result in result_set:
             search_area_id = result[0]
-            cur = dbconn().cursor()
+            cur = conn.cursor()
             cur.execute(sql_neighborhood, (search_area_id,))
             count = cur.fetchone()[0]
             cur.close()
             print("\t" + str(count) + " neighborhoods.")
-            cur = dbconn().cursor()
+            cur = conn.cursor()
             cur.execute(sql_search_area, (search_area_id,))
             count = cur.fetchone()[0]
             cur.close()
@@ -135,9 +127,10 @@ def list_search_area_info(search_area):
         logging.error("Failed to list search area info")
         sys.exit()
 
+
 def list_surveys():
     try:
-        cur=dbconn().cursor()
+        cur = conn.cursor()
         cur.execute("""
             select survey_id, survey_date, survey_description, search_area_id
             from survey
@@ -153,21 +146,22 @@ def list_surveys():
         logging.error("Cannot list surveys.")
         sys.exit()
 
+
 def list_room(room_id):
     try:
         columns = ('room_id', 'host_id', 'room_type', 'country',
-                'city', 'neighborhood', 'address', 'reviews',
-                'overall_satisfaction', 'accommodates',
-                'bedrooms', 'bathrooms', 'price',
-                'deleted', 'minstay', 'last_modified', 'latitude',
-                'longitude', 'survey_id', )
+                   'city', 'neighborhood', 'address', 'reviews',
+                   'overall_satisfaction', 'accommodates',
+                   'bedrooms', 'bathrooms', 'price',
+                   'deleted', 'minstay', 'last_modified', 'latitude',
+                   'longitude', 'survey_id', )
 
         sql = "select room_id"
         for column in columns[1:]:
             sql += ", " + column
         sql += " from room where room_id = ?"
 
-        cur = dbconn().cursor()
+        cur = conn.cursor()
         cur.execute(sql, (room_id,))
         result_set = cur.fetchall()
         if len(result_set) > 0:
@@ -188,35 +182,35 @@ def list_room(room_id):
 
 
 #class Render(QtWebKit.QWebPage):
-class Render():
-  def __init__(self, url):
-    #checks if QApplication already exists
-    self.app=QtGui.QApplication.instance()
-    #create QApplication if it doesnt exist
-    if not self.app:
-        self.app = QtGui.QApplication(sys.argv)
-    QtWebKit.QWebPage.__init__(self)
-    self.loadFinished.connect(self._loadFinished)
-    self.mainFrame().load(QtCore.QUrl(url))
-    self.app.exec_()
+#class Render():
+#  def __init__(self, url):
+#    #checks if QApplication already exists
+#    self.app=QtGui.QApplication.instance()
+#    #create QApplication if it doesnt exist
+#    if not self.app:
+#        self.app = QtGui.QApplication(sys.argv)
+#    QtWebKit.QWebPage.__init__(self)
+#    self.loadFinished.connect(self._loadFinished)
+#    self.mainFrame().load(QtCore.QUrl(url))
+#    self.app.exec_()
 
-  def _loadFinished(self, result):
-    self.frame = self.mainFrame()
-    self.app.quit()
+#  def _loadFinished(self, result):
+#    self.frame = self.mainFrame()
+#    self.app.quit()
 
 
 def db_get_neighborhoods_from_search_area(search_area_id):
-    cur=dbconn().cursor()
+    cur = conn.cursor()
     cur.execute("""
         select name
         from neighborhood
         where search_area_id =  ?
-        order by name""",
-        (search_area_id,))
+        order by name""", (search_area_id,))
     neighborhoods = []
     while True:
         row = cur.fetchone()
-        if row is None: break
+        if row is None:
+            break
         neighborhoods.append(row[0])
     cur.close()
     return neighborhoods
@@ -233,26 +227,27 @@ def display_host(host_id):
 def db_get_search_area_info_from_db(search_area):
     try:
         # get city_id
-        cur = dbconn().cursor()
+        cur = conn.cursor()
         cur.execute("""
             select search_area_id
             from search_area
-            where name = :search_area_name""",
-            {"search_area_name": search_area})
+            where name = :search_area_name
+            """, {"search_area_name": search_area})
         search_area_id = cur.fetchone()[0]
         print("\nFound search_area", search_area,
-		": search_area_id =", str(search_area_id))
+              ": search_area_id =", str(search_area_id))
 
         # get cities
         cur.execute("""select name
                        from city
                        where search_area_id = :search_area_id
                     """,
-                        {"search_area_id": search_area_id})
+                    {"search_area_id": search_area_id})
         cities = []
         while True:
             row = cur.fetchone()
-            if row is None: break
+            if row is None:
+                break
             cities.append(row[0])
 
         # get neighborhoods
@@ -260,18 +255,19 @@ def db_get_search_area_info_from_db(search_area):
             select name
             from neighborhood
             where search_area_id =  :search_area_id
-            """,
-                        {"search_area_id": search_area_id})
+            """, {"search_area_id": search_area_id})
         neighborhoods = []
         while True:
             row = cur.fetchone()
-            if row is None: break
+            if row is None:
+                break
             neighborhoods.append(row[0])
 
         cur.close()
         return (cities, neighborhoods)
     except:
         traceback.print_exc(file=sys.stdout)
+
 
 def db_get_room_to_fill():
     try:
@@ -281,7 +277,7 @@ def db_get_room_to_fill():
                 where price is null and deleted != 1
                 order by rand()
               """
-        cur = dbconn().cursor()
+        cur = conn.cursor()
         cur.execute(sql)
         try:
             (room_id, survey_id) = cur.fetchone()
@@ -299,12 +295,10 @@ def db_save_room_info(room_info, insert_replace_flag):
         logging.debug("In save_room_info for room " + str(room_info))
         if len(room_info) > 0:
             room_id = int(room_info[0])
-            city = room_info[4]
         else:
             room_id = None
-            city = None
         deleted = room_info[13]
-        cur = dbconn().cursor()
+        cur = conn.cursor()
         try:
             if deleted == 1:
                 sql = "update room set deleted = ? where room_id = ?"
@@ -332,7 +326,8 @@ def db_save_room_info(room_info, insert_replace_flag):
                     longitude,
                     survey_id
                     ) """
-                if insert_replace_flag: sql += "on existing update defaults on "
+                if insert_replace_flag:
+                    sql += "on existing update defaults on "
                 sql += """
                     values (?, ?, ?, ?, ?, ?, ?, ?, ?,
                     ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -344,13 +339,13 @@ def db_save_room_info(room_info, insert_replace_flag):
             return 0
         except sqlanydb.IntegrityError:
             if insert_replace_flag:
-                logging.error( "Integrity error: " +  str(room_id))
+                logging.error("Integrity error: " + str(room_id))
             else:
-                logging.info( "Listing already saved: " +  str(room_id))
-                pass # not a problem
+                logging.info("Listing already saved: " + str(room_id))
+                pass   # not a problem
             cur.close()
         except ValueError as e:
-            logging.error( "room_id = " +  str(room_id) + ": " + e.message)
+            logging.error("room_id = " + str(room_id) + ": " + e.message)
             cur.close()
             return -1
         except KeyboardInterrupt:
@@ -358,7 +353,7 @@ def db_save_room_info(room_info, insert_replace_flag):
         except:
             cur.close()
             traceback.print_exc(file=sys.stdout)
-            logging.error("Other error: " +  str(room_id))
+            logging.error("Other error: " + str(room_id))
             return -1
     except KeyboardInterrupt:
         sys.exit()
@@ -380,16 +375,17 @@ def ws_get_page(url):
         except KeyboardInterrupt:
             sys.exit()
         except:
-            logging.error("Probable connectivity problem retrieving " +
-                    url)
+            logging.error("Probable connectivity problem retrieving " + url)
             # traceback.print_exc(file=sys.stdout)
             return None
     return page
 
+
 def ws_get_room_info(room_id, survey_id, flag):
     try:
         # initialization
-        logging.info("Getting info for room " + str(room_id) + " from Airbnb web site")
+        logging.info("Getting info for room " + str(room_id)
+                     + " from Airbnb web site")
         room_url = URL_ROOM_ROOT + str(room_id)
         page = ws_get_page(room_url)
         if page is not None:
@@ -417,11 +413,12 @@ def get_room_info_from_page(page, room_id, survey_id, flag):
         host_id = room_type = country = city = None
         neighborhood = address = reviews = overall_satisfaction = None
         accommodates = bedrooms = bathrooms = price = None
-        latitude = longitude =  None
+        latitude = longitude = None
         deleted = minstay = 1
 
         tree = html.fromstring(page)
-        if tree is not None: deleted = 0
+        if tree is not None:
+            deleted = 0
 
         # Items coded in <meta property="airbedandbreakfast:*> elements
         # -- country --
@@ -429,7 +426,8 @@ def get_room_info_from_page(page, room_id, survey_id, flag):
             "//meta[contains(@property,'airbedandbreakfast:country')]"
             "/@content"
             )
-        if len(temp) > 0: country = temp[0]
+        if len(temp) > 0:
+            country = temp[0]
         else:
             logging.warning("No country found for room " + str(room_id))
         # -- city --
@@ -437,7 +435,8 @@ def get_room_info_from_page(page, room_id, survey_id, flag):
             "//meta[contains(@property,'airbedandbreakfast:city')]"
             "/@content"
             )
-        if len(temp) > 0: city = temp[0]
+        if len(temp) > 0:
+            city = temp[0]
         else:
             logging.warning("No city found for room " + str(room_id))
 
@@ -446,23 +445,26 @@ def get_room_info_from_page(page, room_id, survey_id, flag):
             "//meta[contains(@property,'airbedandbreakfast:rating')]"
             "/@content"
             )
-        if len(temp) > 0: overall_satisfaction = temp[0]
+        if len(temp) > 0:
+            overall_satisfaction = temp[0]
         else:
             logging.warning("No rating found for room " + str(room_id))
         # -- latitude --
-        temp = tree.xpath( "//meta"
-            "[contains(@property,'airbedandbreakfast:location:latitude')]"
-            "/@content"
-            )
-        if len(temp) > 0: latitude = temp[0]
+        temp = tree.xpath("//meta"
+                          "[contains(@property,"
+                          "'airbedandbreakfast:location:latitude')]"
+                          "/@content")
+        if len(temp) > 0:
+            latitude = temp[0]
         else:
             logging.warning("No latitude found for room " + str(room_id))
         # -- longitude --
-        temp = tree.xpath( "//meta"
+        temp = tree.xpath(
+            "//meta"
             "[contains(@property,'airbedandbreakfast:location:longitude')]"
-            "/@content"
-            )
-        if len(temp) > 0: longitude = temp[0]
+            "/@content")
+        if len(temp) > 0:
+            longitude = temp[0]
         else:
             logging.warning("No longitude found for room " + str(room_id))
 
@@ -478,10 +480,9 @@ def get_room_info_from_page(page, room_id, survey_id, flag):
             host_id = int(host_id_element[host_id_offset:])
         else:
             temp = tree.xpath(
-                    "//div[@id='user']"
-                    "//a[contains(@href,'/users/show')]"
-                    "/@href"
-                    )
+                "//div[@id='user']"
+                "//a[contains(@href,'/users/show')]"
+                "/@href")
             if len(temp) > 0:
                 host_id_element = temp[0]
                 host_id_offset = len('/users/show/')
@@ -497,15 +498,16 @@ def get_room_info_from_page(page, room_id, survey_id, flag):
             "//div[@class='col-3'][1]"
             "/text()"
             )
-        if len(temp) > 0: room_type = temp[0].strip()
+        if len(temp) > 0:
+            room_type = temp[0].strip()
         else:
             # try old page match
             temp = tree.xpath(
-            "//table[@id='description_details']"
-            "//td[text()[contains(.,'Room type:')]]"
-            "/following-sibling::td/text()"
-            )
-            if len(temp) > 0: room_type = temp[0].strip()
+                "//table[@id='description_details']"
+                "//td[text()[contains(.,'Room type:')]]"
+                "/following-sibling::td/text()")
+            if len(temp) > 0:
+                room_type = temp[0].strip()
             else:
                 logging.warning("No room_type found for room " + str(room_id))
 
@@ -518,13 +520,14 @@ def get_room_info_from_page(page, room_id, survey_id, flag):
             neighborhood = s[s.find("(")+1:s.find(")")]
         else:
             # try old page match
-            temp = tree.xpath( "//table[@id='description_details']"
-                    "//td[text()[contains(.,'Neighborhood:')]]"
-                    "/following-sibling::td/descendant::text()"
-                    )
-            if len(temp) > 0: neighborhood = temp[0].strip()
+            temp = tree.xpath("//table[@id='description_details']"
+                              "//td[text()[contains(.,'Neighborhood:')]]"
+                              "/following-sibling::td/descendant::text()")
+            if len(temp) > 0:
+                neighborhood = temp[0].strip()
             else:
-                logging.warning("No neighborhood found for room " + str(room_id))
+                logging.warning("No neighborhood found for room "
+                                + str(room_id))
 
         # -- address --
         temp = tree.xpath(
@@ -536,10 +539,11 @@ def get_room_info_from_page(page, room_id, survey_id, flag):
         else:
             # try old page match
             temp = tree.xpath(
-                    "//span[@id='display-address']"
-                    "/@data-location"
-                    )
-            if len(temp) > 0: address = temp[0]
+                "//span[@id='display-address']"
+                "/@data-location"
+                )
+            if len(temp) > 0:
+                address = temp[0]
             else:
                 logging.warning("No address found for room " + str(room_id))
 
@@ -547,13 +551,15 @@ def get_room_info_from_page(page, room_id, survey_id, flag):
         temp = tree.xpath(
             "//span[@itemprop='reviewCount']/text()"
             )
-        if len(temp) > 0: reviews = temp[0]
+        if len(temp) > 0:
+            reviews = temp[0]
         else:
             # try old page match
             temp = tree.xpath(
-            "//span[@itemprop='reviewCount']/text()"
-            )
-            if len(temp) > 0: reviews = temp[0]
+                "//span[@itemprop='reviewCount']/text()"
+                )
+            if len(temp) > 0:
+                reviews = temp[0]
             else:
                 logging.warning("No reviews found for room " + str(room_id))
 
@@ -571,15 +577,15 @@ def get_room_info_from_page(page, room_id, survey_id, flag):
             accommodates = accommodates.split(' ')[0]
         else:
             # try old page match
-            temp = tree.xpath( "//table[@id='description_details']"
-            "//td[text()[contains(.,'Accommodates:')]]"
-            "/following-sibling::td/descendant::text()"
-            )
+            temp = tree.xpath("//table[@id='description_details']"
+                              "//td[text()[contains(.,'Accommodates:')]]"
+                              "/following-sibling::td/descendant::text()")
             if len(temp) > 0:
                 accommodates = temp[0]
                 accommodates = accommodates.split('+')[0]
             else:
-                logging.warning("No accommodates found for room " + str(room_id))
+                logging.warning("No accommodates found for room "
+                                + str(room_id))
 
         # -- bedrooms --
         temp = tree.xpath(
@@ -595,10 +601,10 @@ def get_room_info_from_page(page, room_id, survey_id, flag):
             bedrooms = bedrooms.split(' ')[0]
         else:
             # try old page match
-            temp = tree.xpath( "//table[@id='description_details']"
-            "//td[text()[contains(.,'Bedrooms:')]]"
-            "/following-sibling::td/descendant::text()"
-            )
+            temp = tree.xpath(
+                "//table[@id='description_details']"
+                "//td[text()[contains(.,'Bedrooms:')]]"
+                "/following-sibling::td/descendant::text()")
             if len(temp) > 0:
                 bedrooms = temp[0].split('+')[0]
             else:
@@ -614,10 +620,11 @@ def get_room_info_from_page(page, room_id, survey_id, flag):
             bathrooms = temp[0].split('+')[0]
         else:
             # try old page match
-            temp = tree.xpath( "//table[@id='description_details']"
-                    "//td[text()[contains(.,'Bathrooms:')]]"
-                    "/following-sibling::td/descendant::text()"
-                    )
+            temp = tree.xpath(
+                "//table[@id='description_details']"
+                "//td[text()[contains(.,'Bathrooms:')]]"
+                "/following-sibling::td/descendant::text()"
+                )
             if len(temp) > 0:
                 bathrooms = temp[0].split('+')[0]
             else:
@@ -635,10 +642,9 @@ def get_room_info_from_page(page, room_id, survey_id, flag):
             minstay = non_decimal.sub('', minstay)
         else:
             # try old page match
-            temp = tree.xpath( "//table[@id='description_details']"
-                    "//td[text()[contains(.,'Minimum Stay:')]]"
-                    "/following-sibling::td/descendant::text()"
-                    )
+            temp = tree.xpath("//table[@id='description_details']"
+                              "//td[text()[contains(.,'Minimum Stay:')]]"
+                              "/following-sibling::td/descendant::text()")
             if len(temp) > 0:
                 minstay = temp[0]
                 non_decimal = re.compile(r'[^\d.]+')
@@ -647,7 +653,7 @@ def get_room_info_from_page(page, room_id, survey_id, flag):
                 logging.warning("No minstay found for room " + str(room_id))
 
         # -- price --
-        temp = tree.xpath( "//div[@id='price_amount']/text()")
+        temp = tree.xpath("//div[@id='price_amount']/text()")
         if len(temp) > 0:
             price = temp[0][1:]
             non_decimal = re.compile(r'[^\d.]+')
@@ -664,9 +670,9 @@ def get_room_info_from_page(page, room_id, survey_id, flag):
             price,          deleted,    minstay,
             latitude,       longitude,  survey_id
             )
-        if flag==FLAGS_ADD:
+        if flag == FLAGS_ADD:
             db_save_room_info(room_info, FLAGS_INSERT_REPLACE)
-        elif flag==FLAGS_PRINT:
+        elif flag == FLAGS_PRINT:
             print("Room info:")
             print("\troom_id:", str(room_id))
             print("\thost_id:", str(host_id))
@@ -689,7 +695,7 @@ def get_room_info_from_page(page, room_id, survey_id, flag):
     except KeyboardInterrupt:
         sys.exit()
     except IndexError:
-        logging.error( "Web page has unexpected structure.")
+        logging.error("Web page has unexpected structure.")
         traceback.print_exc(file=sys.stdout)
         return False
     except:
@@ -711,7 +717,7 @@ def fill_loop_by_room():
 
 def db_get_search_area_from_survey_id(survey_id):
     try:
-        cur = dbconn().cursor()
+        cur = conn.cursor()
         cur.execute("""
             select sa.search_area_id, sa.name
             from search_area sa join survey s
@@ -730,13 +736,13 @@ def db_get_search_area_from_survey_id(survey_id):
 
 
 def page_has_been_retrieved(survey_id, room_type, neighborhood, guests,
-        page_number):
+                            page_number):
     """
     Returns 1 if the page has been retrieved and has rooms
     Returns 0 if the page has been retrieved and has no rooms
     Returns -1 if the page has not been retrieved
     """
-    cur = dbconn().cursor()
+    cur = conn.cursor()
     count = 0
     try:
         sql = """
@@ -749,7 +755,8 @@ def page_has_been_retrieved(survey_id, room_type, neighborhood, guests,
             and nb.name = ?
             and guests = ?
             and page_number = ?"""
-        cur.execute(sql, (survey_id, room_type, neighborhood, guests, page_number))
+        cur.execute(sql, (survey_id, room_type, neighborhood, guests,
+                          page_number))
         count = cur.fetchone()[0]
         logging.debug("count = " + str(count))
     except:
@@ -760,24 +767,24 @@ def page_has_been_retrieved(survey_id, room_type, neighborhood, guests,
         return count
 
 
-
 def db_save_survey_search_page(survey_id, room_type, neighborhood_id,
-    guests, page_number, has_rooms):
+                               guests, page_number, has_rooms):
     try:
         sql = """
         insert into survey_search_page(survey_id, room_type, neighborhood_id,
         guests, page_number, has_rooms)
         values (?, ?, ?, ?, ?, ?)
         """
-        cur = dbconn().cursor()
+        cur = conn.cursor()
         cur.execute(sql, (survey_id, room_type, neighborhood_id, guests,
-            page_number, has_rooms))
+                          page_number, has_rooms))
         cur.close()
         conn.commit()
         return True
     except:
         logging.error("Save survey search page failed")
         return False
+
 
 def db_get_neighborhood_id(survey_id, neighborhood):
     sql = """
@@ -790,7 +797,7 @@ def db_get_neighborhood_id(survey_id, neighborhood):
     where s.survey_id = ?
     and nb.name = ?
     """
-    cur = dbconn().cursor()
+    cur = conn.cursor()
     cur.execute(sql, (survey_id, neighborhood, ))
     neighborhood_id = cur.fetchone()[0]
     cur.close()
@@ -798,7 +805,7 @@ def db_get_neighborhood_id(survey_id, neighborhood):
 
 
 def search_page_url(search_area_name, guests, neighborhood, room_type,
-        page_number):
+                    page_number):
     url_root = "http://www.airbnb.com/s/" + search_area_name
     url_suffix = "guests=" + str(guests)
     url_suffix += "&"
@@ -818,19 +825,20 @@ def search_page_url(search_area_name, guests, neighborhood, room_type,
     logging.debug("URL: " + url)
     return url
 
+
 def ws_get_search_page_info(
         survey_id, search_area_name, room_type, neighborhood, guests,
         page_number, flag):
-    logging.info(
-            room_type + ", " +
-            neighborhood + ", " +
-            str(guests) + " guests, " +
-            "page " + str(page_number)
-        )
-    url = search_page_url(search_area_name, guests, neighborhood, room_type, page_number)
+    logging.info(room_type + ", " +
+                 neighborhood + ", " +
+                 str(guests) + " guests, " +
+                 "page " + str(page_number))
+    url = search_page_url(search_area_name, guests, neighborhood, room_type,
+                          page_number)
     time.sleep(3.0 * random.random())
     page = ws_get_page(url)
-    if page is False: return 0
+    if page is False:
+        return 0
     tree = html.fromstring(page)
     room_elements = tree.xpath(
         "//div[@class='listing']/@data-id"
@@ -844,35 +852,35 @@ def ws_get_search_page_info(
     else:
         has_rooms = 0
     if flag == FLAGS_ADD:
-        db_save_survey_search_page(survey_id,
-        room_type, neighborhood_id,
-        guests, page_number, has_rooms )
+        db_save_survey_search_page(survey_id, room_type,
+                                   neighborhood_id, guests,
+                                   page_number, has_rooms)
     if room_count > 0:
         for room_element in room_elements:
             room_id = int(room_element)
             if room_id is not None:
                 room_info = (
                     room_id,
-                    None, # host_id,
-                    room_type, # room_type,
-                    None, # country,
-                    None, # city,
-                    None, # neighborhood,
-                    None, # address,
-                    None, # reviews,
-                    None, # overall_satisfaction
-                    None, # accommodates
-                    None, # bedrooms
-                    None, # bathrooms
-                    None, # price
-                    0, # deleted
-                    None, # minstay
-                    None, # latitude
-                    None, # longitude
-                    survey_id, #survey_id
+                    None,  # host_id,
+                    room_type,  # room_type,
+                    None,  # country,
+                    None,  # city,
+                    None,  # neighborhood,
+                    None,  # address,
+                    None,  # reviews,
+                    None,  # overall_satisfaction
+                    None,  # accommodates
+                    None,  # bedrooms
+                    None,  # bathrooms
+                    None,  # price
+                    0,     # deleted
+                    None,  # minstay
+                    None,  # latitude
+                    None,  # longitude
+                    survey_id,  # survey_id
                     )
                 if flag == FLAGS_ADD:
-                    db_save_room_info( room_info, FLAGS_INSERT_NO_REPLACE)
+                    db_save_room_info(room_info, FLAGS_INSERT_NO_REPLACE)
                 elif flag == FLAGS_PRINT:
                     print(room_info[2], room_info[0])
     else:
@@ -882,7 +890,8 @@ def ws_get_search_page_info(
 
 def searcher(survey_id, flag):
     try:
-        (search_area_id, search_area_name) = db_get_search_area_from_survey_id(survey_id)
+        (search_area_id, search_area_name) = \
+            db_get_search_area_from_survey_id(survey_id)
         neighborhoods = db_get_neighborhoods_from_search_area(search_area_id)
         for room_type in (
                 "Private room",
@@ -894,8 +903,8 @@ def searcher(survey_id, flag):
                     max_guests = 4
                 else:
                     max_guests = SEARCH_MAX_GUESTS
-                for guests in range(1,max_guests):
-                    for page_number in range(1,SEARCH_MAX_PAGES):
+                for guests in range(1, max_guests):
+                    for page_number in range(1, SEARCH_MAX_PAGES):
                         if flag != FLAGS_PRINT:
                             # for FLAGS_PRINT, fetch one page and print it
                             count = page_has_been_retrieved(
@@ -915,12 +924,15 @@ def searcher(survey_id, flag):
                             guests,
                             page_number,
                             flag)
-                        if room_count <= 0: break
-                        if flag == FLAGS_PRINT: return
+                        if room_count <= 0:
+                            break
+                        if flag == FLAGS_PRINT:
+                            return
     except KeyboardInterrupt:
         sys.exit()
     except:
         traceback.print_exc(file=sys.stdout)
+
 
 def ws_get_city_info(city, flag):
     try:
@@ -931,19 +943,17 @@ def ws_get_city_info(city, flag):
         tree = html.fromstring(page)
         try:
             citylist = tree.xpath(
-                    "//input[@name='location']/@value"
-                    )
+                "//input[@name='location']/@value")
             neighborhoods = tree.xpath(
-                    "//input[@name='neighborhood']/@value"
-                    )
-            if flag==FLAGS_PRINT:
+                "//input[@name='neighborhood']/@value")
+            if flag == FLAGS_PRINT:
                 print("\n", citylist[0])
                 print("Neighborhoods:")
                 for neighborhood in neighborhoods:
                     print("\t", neighborhood)
-            elif flag==FLAGS_ADD:
+            elif flag == FLAGS_ADD:
                 if len(citylist) > 0:
-                    cur = dbconn().cursor()
+                    cur = conn.cursor()
                     # check if it exists
                     sql_check = """
                         select name
@@ -976,16 +986,18 @@ def ws_get_city_info(city, flag):
                         values(?, ?)
                         """
                     for neighborhood in neighborhoods:
-                        cur.execute(sql_neighborhood,
-                                (neighborhood, search_area_id,))
+                        cur.execute(sql_neighborhood, (neighborhood,
+                                                       search_area_id,))
                         logging.info("Added neighborhood " + neighborhood)
                 else:
                     logging.info("No neighborhoods found for " + city)
         except UnicodeEncodeError:
-            if sys.version_info >= (3,):
-                print(s.encode('utf8').decode(sys.stdout.encoding))
-            else:
-                print(s.encode('utf8'))
+            #if sys.version_info >= (3,):
+            #    print(s.encode('utf8').decode(sys.stdout.encoding))
+            #else:
+            #    print(s.encode('utf8'))
+            # unhandled at the moment
+            pass
         except:
             traceback.print_exc(file=sys.stdout)
             logging.error("Error collecting city and neighborhood information")
@@ -994,59 +1006,67 @@ def ws_get_city_info(city, flag):
 
 
 def main():
-    parser = argparse.ArgumentParser(
+    parser = \
+        argparse.ArgumentParser(
             description='Manage a database of Airbnb listings.',
             usage='%(prog)s [options]')
     # Only one argument!
     group = parser.add_mutually_exclusive_group()
     group.add_argument('-asa', '--addsearcharea',
-            metavar='search_area', action='store', default=False,
-            help='get and save the name and neighborhoods for search area (city)')
+                       metavar='search_area', action='store', default=False,
+                       help="""get and save the name and neighborhoods
+                       for search area (city)""")
     group.add_argument('-ar', '--addroom',
-            metavar='room_id', action='store', default=False,
-            help='add a room_id to the database')
+                       metavar='room_id', action='store', default=False,
+                       help='add a room_id to the database')
     group.add_argument('-asv', '--addsurvey',
-            metavar='search_area', type = str,
-            help='add a survey entry to the database, for search_area')
+                       metavar='search_area', type=str,
+                       help="""add a survey entry to the database,
+                       for search_area""")
     group.add_argument('-dh', '--displayhost',
-            metavar='host_id', type=int,
-            help='display web page for host_id in browser')
+                       metavar='host_id', type=int,
+                       help='display web page for host_id in browser')
     group.add_argument('-dr', '--displayroom',
-            metavar='room_id', type=int,
-            help='display web page for room_id in browser')
+                       metavar='room_id', type=int,
+                       help='display web page for room_id in browser')
     group.add_argument('-f', '--fill',
-            action='store_true', default=False,
-            help='fill in details for room_ids collected with -s')
+                       action='store_true', default=False,
+                       help='fill in details for room_ids collected with -s')
     group.add_argument('-lsa', '--listsearcharea',
-            metavar='search_area', type=str,
-            help='list information about this search area from the database')
+                       metavar='search_area', type=str,
+                       help="""list information about this search area
+                       from the database""")
     group.add_argument('-lr', '--listroom',
-            metavar='room_id', type=int,
-            help='list information about room_id from the database')
+                       metavar='room_id', type=int,
+                       help='list information about room_id from the database')
     group.add_argument('-ls', '--listsurveys',
-            action='store_true', default=False,
-            help='list the surveys in the database')
+                       action='store_true', default=False,
+                       help='list the surveys in the database')
     group.add_argument('-psa', '--printsearcharea',
-            metavar='search_area', action='store', default=False,
-            help='print the name and neighborhoods for search area (city) from the Airbnb web site')
+                       metavar='search_area', action='store', default=False,
+                       help="""print the name and neighborhoods for
+                       search area (city) from the Airbnb web site""")
     group.add_argument('-pr', '--printroom',
-            metavar='room_id', type=int,
-            help='print room_id information from the Airbnb web site')
+                       metavar='room_id', type=int,
+                       help="""print room_id information
+                       from the Airbnb web site""")
     group.add_argument('-ps', '--printsearch',
-            metavar='survey_id', type=int,
-            help='print first page of search information for survey from the Airbnb web site')
+                       metavar='survey_id', type=int,
+                       help="""print first page of search information
+                       for survey from the Airbnb web site""")
     group.add_argument('-s', '--search',
-            metavar='survey_id', type=int,
-            help='search for rooms using survey survey_id')
+                       metavar='survey_id', type=int,
+                       help='search for rooms using survey survey_id')
     group.add_argument('-v', '--version',
-            action='version', version='%(prog)s, version of 2014-08-15')
-    group.add_argument('-?', action='help' )
+                       action='version',
+                       version='%(prog)s, version of 2014-08-15')
+    group.add_argument('-?', action='help')
 
     args = parser.parse_args()
 
     try:
         if args.search:
-            searcher(args.search, FLAGS_SAVE)
+            searcher(args.search, FLAGS_ADD)
         elif args.fill:
             fill_loop_by_room()
         elif args.addsearcharea:
@@ -1060,7 +1080,7 @@ def main():
         elif args.displayroom:
             display_room(args.displayroom)
         elif args.listsearcharea:
-            list_city_info(args.listsearcharea)
+            list_search_area_info(args.listsearcharea)
         elif args.listroom:
             list_room(args.listroom)
         elif args.listsurveys:
