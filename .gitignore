@@ -1,7 +1,10 @@
-./backup/*
-./db/*
-./doc/*
-./img/*
-./maps/*
-./res/*
-./sqlite/*
+/backup/*
+/db/*
+/doc/*
+/img/*
+/maps/*
+/res/*
+/sqlite/*
+/airbnb.xlsx
+/isql
+/backupdb
