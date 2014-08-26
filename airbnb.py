@@ -2,10 +2,8 @@
 # ============================================================================
 # Airbnb web site scraper, for analysis of Airbnb listings
 # Tom Slee, 2013--2014
-
 #
 # function naming conventions:
-
 #   ws_get = get from web site
 #   db_get = get from database
 #   db_add = add to the database
@@ -39,7 +37,7 @@ URL_ROOM_ROOT = "http://www.airbnb.com/rooms/"
 URL_HOST_ROOT = "https://www.airbnb.com/users/show/"
 URL_TIMEOUT = 10.0
 FILL_MAX_ROOM_COUNT = 50000
-SEARCH_MAX_PAGES = 25
+SEARCH_MAX_PAGES = 100
 SEARCH_MAX_GUESTS = 16
 FLAGS_ADD = 1
 FLAGS_PRINT = 9
@@ -201,6 +199,32 @@ def list_room(room_id):
 #    self.app.quit()
 
 
+def db_add_survey(search_area):
+    try:
+        cur = conn.cursor()
+        cur.execute("call add_survey(?)", (search_area,))
+        sql_identity = """select @@identity"""
+        cur.execute(sql_identity, ())
+        survey_id = cur.fetchone()[0]
+        cur.execute("""select survey_id, survey_date,
+        survey_description, search_area_id
+        from survey where survey_id = ?""", (survey_id,))
+        (survey_id,
+         survey_date,
+         survey_description,
+         search_area_id) = cur.fetchone()
+        conn.commit()
+        cur.close()
+        print("\nSurvey added:\n"
+              + "\n\tsurvey_id=" + str(survey_id)
+              + "\n\tsurvey_date=" + str(survey_date)
+              + "\n\tsurvey_description=" + survey_description
+              + "\n\tsearch_area_id=" + str(search_area_id))
+    except:
+        logging.error("Failed to add survey for " + search_area)
+        traceback.print_exc(file=sys.stdout)
+
+
 def db_get_neighborhoods_from_search_area(search_area_id):
     cur = conn.cursor()
     cur.execute("""
@@ -216,14 +240,6 @@ def db_get_neighborhoods_from_search_area(search_area_id):
         neighborhoods.append(row[0])
     cur.close()
     return neighborhoods
-
-
-def display_room(room_id):
-    webbrowser.open(URL_ROOM_ROOT + str(room_id))
-
-
-def display_host(host_id):
-    webbrowser.open(URL_HOST_ROOT + str(host_id))
 
 
 def db_get_search_area_info_from_db(search_area):
@@ -337,13 +353,14 @@ def db_save_room_info(room_info, insert_replace_flag):
                 cur.execute(sql, room_info)
             cur.close()
             conn.commit()
-            logging.info("Saved room " + str(room_id))
+            print("Saved room " + str(room_id))
             return 0
         except sqlanydb.IntegrityError:
             if insert_replace_flag:
                 logging.error("Integrity error: " + str(room_id))
             else:
-                logging.info("Listing already saved: " + str(room_id))
+                print("Listing already saved: " + str(room_id),
+                      end='\r')
                 pass   # not a problem
             cur.close()
         except ValueError as e:
@@ -386,8 +403,8 @@ def ws_get_page(url):
 def ws_get_room_info(room_id, survey_id, flag):
     try:
         # initialization
-        logging.info("Getting info for room " + str(room_id)
-                     + " from Airbnb web site")
+        print("Getting info for room " + str(room_id)
+              + " from Airbnb web site")
         room_url = URL_ROOM_ROOT + str(room_id)
         page = ws_get_page(room_url)
         if page is not None:
@@ -707,6 +724,14 @@ def get_room_info_from_page(page, room_id, survey_id, flag):
         return False
 
 
+def display_room(room_id):
+    webbrowser.open(URL_ROOM_ROOT + str(room_id))
+
+
+def display_host(host_id):
+    webbrowser.open(URL_HOST_ROOT + str(host_id))
+
+
 def fill_loop_by_room():
     room_count = 0
     while room_count < FILL_MAX_ROOM_COUNT:
@@ -832,10 +857,10 @@ def search_page_url(search_area_name, guests, neighborhood, room_type,
 
 def ws_get_search_page_info(survey_id, search_area_name, room_type,
                             neighborhood, guests, page_number, flag):
-    logging.info(room_type + ", " +
-                 neighborhood + ", " +
-                 str(guests) + " guests, " +
-                 "page " + str(page_number))
+    print(room_type + ", " +
+          neighborhood + ", " +
+          str(guests) + " guests, " +
+          "page " + str(page_number))
     url = search_page_url(search_area_name, guests, neighborhood, room_type,
                           page_number)
     time.sleep(3.0 * random.random())
@@ -846,7 +871,7 @@ def ws_get_search_page_info(survey_id, search_area_name, room_type,
     room_elements = tree.xpath(
         "//div[@class='listing']/@data-id"
     )
-    logging.info("Found " + str(len(room_elements)) + " room elements.")
+    logging.debug("Found " + str(len(room_elements)) + " rooms.")
     neighborhood_id = db_get_neighborhood_id(
         survey_id, neighborhood)
     room_count = len(room_elements)
@@ -887,7 +912,7 @@ def ws_get_search_page_info(survey_id, search_area_name, room_type,
                 elif flag == FLAGS_PRINT:
                     print(room_info[2], room_info[0])
     else:
-        logging.info("No rooms found")
+        print("No rooms found")
     return room_count
 
 
@@ -964,7 +989,7 @@ def ws_get_city_info(city, flag):
                         where name = ?"""
                     cur.execute(sql_check, (citylist[0],))
                     if cur.fetchone() is not None:
-                        logging.info("City already exists: " + citylist[0])
+                        print("City already exists: " + citylist[0])
                         return
                     sql_search_area = """insert
                                 into search_area (name)
@@ -980,7 +1005,7 @@ def ws_get_city_info(city, flag):
                             values (?,?)"""
                     cur.execute(sql_city, (city, search_area_id,))
                     conn.commit()
-                    logging.info("Added city " + city)
+                    print("Added city " + city)
                 if len(neighborhoods) > 0:
                     sql_neighborhood = """
                         insert
@@ -991,9 +1016,9 @@ def ws_get_city_info(city, flag):
                     for neighborhood in neighborhoods:
                         cur.execute(sql_neighborhood, (neighborhood,
                                                        search_area_id,))
-                        logging.info("Added neighborhood " + neighborhood)
+                        print("Added neighborhood " + neighborhood)
                 else:
-                    logging.info("No neighborhoods found for " + city)
+                    print("No neighborhoods found for " + city)
         except UnicodeEncodeError:
             #if sys.version_info >= (3,):
             #    print(s.encode('utf8').decode(sys.stdout.encoding))
