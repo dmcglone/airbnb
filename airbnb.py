@@ -52,7 +52,7 @@ logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 console_handler = logging.StreamHandler(sys.stdout)
 console_handler.setLevel(logging.INFO)
-formatter = logging.Formatter('%(levelname)-8s\t%(message)s')
+formatter = logging.Formatter('%(levelname)-8s%(message)s')
 console_handler.setFormatter(formatter)
 logger.addHandler(console_handler)
 
@@ -422,7 +422,10 @@ def ws_get_room_info(room_id, survey_id, flag):
             return True
         else:
             return False
+    except BrokenPipeError as bpe:
+        logging.error( bpe.message)
     except KeyboardInterrupt:
+        logging.error("Keyboard interrupt")
         sys.exit()
     except:
         return False
@@ -700,6 +703,18 @@ def get_room_info_from_page(page, room_id, survey_id, flag):
             price,          deleted,    minstay,
             latitude,       longitude,  survey_id
             )
+        if len([x for x in room_info if x is not None]) < 6:
+            logging.warn("Room " + str(room_id) + " has probably been deleted")
+            #TODO better to make room_info a dict
+            deleted = 1
+            room_info = (
+                room_id,        host_id,    room_type,
+                country,        city,       neighborhood,
+                address,        reviews,    overall_satisfaction,
+                accommodates,   bedrooms,   bathrooms,
+                price,          deleted,    minstay,
+                latitude,       longitude,  survey_id
+                )
         if flag == FLAGS_ADD:
             db_save_room_info(room_info, FLAGS_INSERT_REPLACE)
         elif flag == FLAGS_PRINT:
@@ -742,15 +757,19 @@ def display_host(host_id):
 
 
 def fill_loop_by_room():
-    room_count = 0
-    while room_count < FILL_MAX_ROOM_COUNT:
-        (room_id, survey_id) = db_get_room_to_fill()
-        if room_id is None:
-            break
-        else:
-            time.sleep(3.0 * random.random())
-            if(ws_get_room_info(room_id, survey_id, FLAGS_ADD)):
-                room_count += 1
+    try:
+        room_count = 0
+        while room_count < FILL_MAX_ROOM_COUNT:
+            (room_id, survey_id) = db_get_room_to_fill()
+            if room_id is None:
+                break
+            else:
+                time.sleep(3.0 * random.random())
+                if(ws_get_room_info(room_id, survey_id, FLAGS_ADD)):
+                    room_count += 1
+    except TypeError as te:
+        logger.error("No unfilled rooms left.")
+        sys.exit()
 
 
 def db_get_search_area_from_survey_id(survey_id):
