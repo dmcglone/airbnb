@@ -7,7 +7,9 @@
 #   ws_get = get from web site
 #   db_get = get from database
 #   db_add = add to the database
+#
 # usage conventions:
+#   add = add to database
 #   display = open a browser and show
 #   list = get from database and print
 #   print = get from web site and print
@@ -19,6 +21,7 @@ import sys
 import traceback
 import time
 import random
+import subprocess
 #import codecs
 #from cssselect import HTMLTranslator, SelectorError
 import urllib.request
@@ -43,18 +46,25 @@ FLAGS_ADD = 1
 FLAGS_PRINT = 9
 FLAGS_INSERT_REPLACE = True
 FLAGS_INSERT_NO_REPLACE = False
-DB_SERVERNAME = "airbnb"
 DB_NAME = "airbnb"
-DB_FILE = os.getcwd() + "/db/airbnb.db"
+DB_SERVERNAME = DB_NAME
+DB_DIR = os.path.dirname(os.path.realpath(__file__)) + "/db"
+DB_FILE = DB_DIR + "/" + DB_NAME + ".db"
+MAX_CONNECTION_ATTEMPTS = 5
 
 # Set up logging
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 console_handler = logging.StreamHandler(sys.stdout)
 console_handler.setLevel(logging.INFO)
-formatter = logging.Formatter('%(levelname)-8s%(message)s')
-console_handler.setFormatter(formatter)
+ch_formatter = logging.Formatter('%(levelname)-8s%(message)s')
+console_handler.setFormatter(ch_formatter)
+filelog_handler = logging.FileHandler("run.log")
+filelog_handler.setLevel(logging.INFO)
+fl_formatter = logging.Formatter('%(asctime)-15s %(levelname)-8s%(message)s')
+filelog_handler.setFormatter(fl_formatter)
 logger.addHandler(console_handler)
+logger.addHandler(filelog_handler)
 
 # global database connection
 try:
@@ -65,33 +75,9 @@ try:
         databasename=DB_NAME,
         databasefile=DB_FILE)
 except:
-    logger.error("Failed to connect to database." +
-                  "You may need to change the DB_FILE value in airbnb.py")
-
-def db_add_survey(search_area):
-    try:
-        cur = conn.cursor()
-        cur.execute("call add_survey(?)", (search_area,))
-        sql_identity = """select @@identity"""
-        cur.execute(sql_identity, ())
-        survey_id = cur.fetchone()[0]
-        cur.execute("""select survey_id, survey_date,
-        survey_description, search_area_id
-        from survey where survey_id = ?""", (survey_id,))
-        (survey_id,
-         survey_date,
-         survey_description,
-         search_area_id) = cur.fetchone()
-        conn.commit()
-        cur.close()
-        print("\nSurvey added:\n"
-              + "\n\tsurvey_id=" + str(survey_id)
-              + "\n\tsurvey_date=" + str(survey_date)
-              + "\n\tsurvey_description=" + survey_description
-              + "\n\tsearch_area_id=" + str(search_area_id))
-    except:
-        logger.error("Failed to add survey for " + search_area)
-        traceback.print_exc(file=sys.stdout)
+    logger.error(
+        "Failed to connect to database." +
+        "You may need to change the DB_FILE value in airbnb.py")
 
 
 def list_search_area_info(search_area):
@@ -135,7 +121,7 @@ def list_search_area_info(search_area):
             print("\t" + str(count) + " Airbnb cities.")
     except:
         logger.error("Failed to list search area info")
-        sys.exit()
+        raise
 
 
 def list_surveys():
@@ -154,7 +140,7 @@ def list_surveys():
                 print(template.format(id, date, desc, sa_id))
     except:
         logger.error("Cannot list surveys.")
-        sys.exit()
+        raise
 
 
 def list_room(room_id):
@@ -165,7 +151,6 @@ def list_room(room_id):
                    'bedrooms', 'bathrooms', 'price',
                    'deleted', 'minstay', 'last_modified', 'latitude',
                    'longitude', 'survey_id', )
-
         sql = "select room_id"
         for column in columns[1:]:
             sql += ", " + column
@@ -188,7 +173,7 @@ def list_room(room_id):
         cur.close()
     except:
         traceback.print_exc(file=sys.stdout)
-        return False
+        raise
 
 
 #class Render(QtWebKit.QWebPage):
@@ -207,6 +192,26 @@ def list_room(room_id):
 #  def _loadFinished(self, result):
 #    self.frame = self.mainFrame()
 #    self.app.quit()
+def db_init():
+    try:
+        # get the directory this file is in
+        if not os.path.isdir(DB_DIR):
+            os.mkdir(DB_DIR)
+        if not os.path.isfile(DB_FILE):
+            logger.debug("dbiniting")
+            subprocess.call(["dbinit", DB_FILE])
+        subprocess.call(["dbisql",
+                         "-nogui",
+                         "-c",
+                         "\"uid=dba;pwd=sql;" +
+                         "dbf=" + DB_FILE +
+                         ";eng=" + DB_SERVERNAME + "\"",
+                         "read reload.sql"])
+    except OSError:
+        logger.error("Cannot create directory " + dbdir)
+    except Exception as e:
+        logger.error("Cannot create database file" + e.message )
+        raise
 
 
 def db_add_survey(search_area):
@@ -232,24 +237,29 @@ def db_add_survey(search_area):
               + "\n\tsearch_area_id=" + str(search_area_id))
     except:
         logger.error("Failed to add survey for " + search_area)
-        traceback.print_exc(file=sys.stdout)
+        raise
 
 
 def db_get_neighborhoods_from_search_area(search_area_id):
-    cur = conn.cursor()
-    cur.execute("""
-        select name
-        from neighborhood
-        where search_area_id =  ?
-        order by name""", (search_area_id,))
-    neighborhoods = []
-    while True:
-        row = cur.fetchone()
-        if row is None:
-            break
-        neighborhoods.append(row[0])
-    cur.close()
-    return neighborhoods
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            select name
+            from neighborhood
+            where search_area_id =  ?
+            order by name""", (search_area_id,))
+        neighborhoods = []
+        while True:
+            row = cur.fetchone()
+            if row is None:
+                break
+            neighborhoods.append(row[0])
+        cur.close()
+        return neighborhoods
+    except:
+        logger.error("Failed to retrieve neighborhoods from "
+                     + str(search_area_id))
+        raise
 
 
 def db_get_search_area_info_from_db(search_area):
@@ -294,28 +304,31 @@ def db_get_search_area_info_from_db(search_area):
         cur.close()
         return (cities, neighborhoods)
     except:
-        traceback.print_exc(file=sys.stdout)
+        logger.error("Error getting search area info from db")
+        raise
 
 
 def db_get_room_to_fill():
     try:
         sql = """
-                select room_id, survey_id
-                from room
-                where price is null and deleted != 1
-                order by rand()
-              """
+        select room_id, survey_id
+        from room
+        where price is null and deleted != 1
+        order by rand()
+        """
         cur = conn.cursor()
         cur.execute(sql)
-        try:
-            (room_id, survey_id) = cur.fetchone()
-            cur.close()
-            return (room_id, survey_id)
-        except TypeError:
-            cur.close()
-            return None
+        (room_id, survey_id) = cur.fetchone()
+        cur.close()
+        return (room_id, survey_id)
+    except TypeError:
+        cur.close()
+        logger.info("No unfilled rooms in database")
+        raise
     except:
-        traceback.print_exc(file=sys.stdout)
+        logger.error("Error retrieving room to fill from db")
+        cur.close()
+        raise
 
 
 def db_save_room_info(room_info, insert_replace_flag):
@@ -364,7 +377,7 @@ def db_save_room_info(room_info, insert_replace_flag):
             cur.close()
             conn.commit()
             logger.info("Saved room " + str(room_id))
-            return 0
+            return
         except sqlanydb.IntegrityError:
             if insert_replace_flag:
                 logger.error("Integrity error: " + str(room_id))
@@ -375,18 +388,19 @@ def db_save_room_info(room_info, insert_replace_flag):
         except ValueError as e:
             logger.error("room_id = " + str(room_id) + ": " + e.message)
             cur.close()
-            return -1
+            raise
         except KeyboardInterrupt:
-            sys.exit()
+            raise
         except:
             cur.close()
             traceback.print_exc(file=sys.stdout)
             logger.error("Other error: " + str(room_id))
-            return -1
+            raise
     except KeyboardInterrupt:
-        sys.exit()
+        raise
     except:
-        traceback.print_exc(file=sys.stdout)
+        logger.error("Error saving room")
+        raise
 
 
 def ws_get_page(url):
@@ -401,11 +415,13 @@ def ws_get_page(url):
             page = response.read()
             break
         except KeyboardInterrupt:
-            sys.exit()
+            raise
         except:
-            logger.error("Probable connectivity problem retrieving " + url)
-            # traceback.print_exc(file=sys.stdout)
-            return None
+            if attempt > MAX_CONNECTION_ATTEMPTS:
+                logger.error("Probable connectivity problem retrieving "
+                             "web page")
+                # traceback.print_exc(file=sys.stdout)
+                raise
     return page
 
 
@@ -413,7 +429,7 @@ def ws_get_room_info(room_id, survey_id, flag):
     try:
         # initialization
         logger.info("Getting info for room " + str(room_id)
-              + " from Airbnb web site")
+                    + " from Airbnb web site")
         room_url = URL_ROOM_ROOT + str(room_id)
         page = ws_get_page(room_url)
         if page is not None:
@@ -423,12 +439,14 @@ def ws_get_room_info(room_id, survey_id, flag):
         else:
             return False
     except BrokenPipeError as bpe:
-        logging.error( bpe.message)
+        logger.error(bpe.message)
+        raise
     except KeyboardInterrupt:
-        logging.error("Keyboard interrupt")
-        sys.exit()
+        logger.error("Keyboard interrupt")
+        raise
     except:
-        return False
+        logger.error("Failed to get room " + str(room_id) + " from web site")
+        raise
 
 
 def get_room_info_from_page(page, room_id, survey_id, flag):
@@ -451,8 +469,12 @@ def get_room_info_from_page(page, room_id, survey_id, flag):
         if tree is not None:
             deleted = 0
 
-        # Items coded in <meta property="airbedandbreakfast:*> elements
-        # -- country --
+        # Some of these items do not appear on every page (eg,
+        # ratings, bathrooms), and so their absence is marked with
+        # logger.info. Others should be present for every room (eg,
+        # latitude, room_type, host_id) and so are marked with a
+        # warning.  Items coded in <meta
+        # property="airbedandbreakfast:*> elements -- country --
         temp = tree.xpath(
             "//meta[contains(@property,'airbedandbreakfast:country')]"
             "/@content"
@@ -460,7 +482,7 @@ def get_room_info_from_page(page, room_id, survey_id, flag):
         if len(temp) > 0:
             country = temp[0]
         else:
-            logger.warning("No country found for room " + str(room_id))
+            logger.info("No country found for room " + str(room_id))
         # -- city --
         temp = tree.xpath(
             "//meta[contains(@property,'airbedandbreakfast:city')]"
@@ -479,7 +501,7 @@ def get_room_info_from_page(page, room_id, survey_id, flag):
         if len(temp) > 0:
             overall_satisfaction = temp[0]
         else:
-            logger.warning("No rating found for room " + str(room_id))
+            logger.info("No rating found for room " + str(room_id))
         # -- latitude --
         temp = tree.xpath("//meta"
                           "[contains(@property,"
@@ -558,7 +580,7 @@ def get_room_info_from_page(page, room_id, survey_id, flag):
                 neighborhood = temp[0].strip()
             else:
                 logger.warning("No neighborhood found for room "
-                                + str(room_id))
+                               + str(room_id))
 
         # -- address --
         temp = tree.xpath(
@@ -576,7 +598,7 @@ def get_room_info_from_page(page, room_id, survey_id, flag):
             if len(temp) > 0:
                 address = temp[0]
             else:
-                logger.warning("No address found for room " + str(room_id))
+                logger.info("No address found for room " + str(room_id))
 
         # -- reviews --
         temp = tree.xpath("//div[@id='room']/div[@id='reviews']//h4/text()")
@@ -594,7 +616,7 @@ def get_room_info_from_page(page, room_id, survey_id, flag):
             if len(temp) > 0:
                 reviews = temp[0]
             else:
-                logger.warning("No reviews found for room " + str(room_id))
+                logger.info("No reviews found for room " + str(room_id))
 
         # -- accommodates --
         temp = tree.xpath(
@@ -618,7 +640,7 @@ def get_room_info_from_page(page, room_id, survey_id, flag):
                 accommodates = accommodates.split('+')[0]
             else:
                 logger.warning("No accommodates found for room "
-                                + str(room_id))
+                               + str(room_id))
 
         # -- bedrooms --
         temp = tree.xpath(
@@ -661,7 +683,7 @@ def get_room_info_from_page(page, room_id, survey_id, flag):
             if len(temp) > 0:
                 bathrooms = temp[0].split('+')[0]
             else:
-                logger.warning("No bathrooms found for room " + str(room_id))
+                logger.info("No bathrooms found for room " + str(room_id))
 
         # -- minimum stay --
         temp = tree.xpath(
@@ -683,7 +705,7 @@ def get_room_info_from_page(page, room_id, survey_id, flag):
                 non_decimal = re.compile(r'[^\d.]+')
                 minstay = non_decimal.sub('', minstay)
             else:
-                logger.warning("No minstay found for room " + str(room_id))
+                logger.info("No minstay found for room " + str(room_id))
 
         # -- price --
         temp = tree.xpath("//div[@id='price_amount']/text()")
@@ -693,7 +715,7 @@ def get_room_info_from_page(page, room_id, survey_id, flag):
             price = non_decimal.sub('', price)
         else:
             # old page match is the same
-            logger.warning("No price found for room " + str(room_id))
+            logger.info("No price found for room " + str(room_id))
 
         room_info = (
             room_id,        host_id,    room_type,
@@ -704,7 +726,7 @@ def get_room_info_from_page(page, room_id, survey_id, flag):
             latitude,       longitude,  survey_id
             )
         if len([x for x in room_info if x is not None]) < 6:
-            logging.warn("Room " + str(room_id) + " has probably been deleted")
+            logger.warn("Room " + str(room_id) + " has probably been deleted")
             #TODO better to make room_info a dict
             deleted = 1
             room_info = (
@@ -738,14 +760,13 @@ def get_room_info_from_page(page, room_id, survey_id, flag):
             print("\tminstay:", minstay)
         return True
     except KeyboardInterrupt:
-        sys.exit()
+        raise
     except IndexError:
         logger.error("Web page has unexpected structure.")
-        traceback.print_exc(file=sys.stdout)
-        return False
+        raise
     except:
-        traceback.print_exc(file=sys.stdout)
-        return False
+        logger.error("Error parsing web page")
+        raise
 
 
 def display_room(room_id):
@@ -768,8 +789,10 @@ def fill_loop_by_room():
                 if(ws_get_room_info(room_id, survey_id, FLAGS_ADD)):
                     room_count += 1
     except TypeError as te:
-        logger.error("No unfilled rooms left.")
-        sys.exit()
+        raise
+    except:
+        logger.error("Error in fill_loop_by_room")
+        raise
 
 
 def db_get_search_area_from_survey_id(survey_id):
@@ -785,11 +808,11 @@ def db_get_search_area_from_survey_id(survey_id):
         return (search_area_id, name)
     except KeyboardInterrupt:
         cur.close()
-        sys.exit()
+        raise
     except:
         cur.close()
         logger.error("No search area for survey_id" + str(survey_id))
-        sys.exit()
+        raise
 
 
 def page_has_been_retrieved(survey_id, room_type, neighborhood, guests,
@@ -885,10 +908,11 @@ def search_page_url(search_area_name, guests, neighborhood, room_type,
 
 def ws_get_search_page_info(survey_id, search_area_name, room_type,
                             neighborhood, guests, page_number, flag):
-    logger.info(room_type + ", " +
-          neighborhood + ", " +
-          str(guests) + " guests, " +
-          "page " + str(page_number))
+    logger.info(
+        room_type + ", " +
+        neighborhood + ", " +
+        str(guests) + " guests, " +
+        "page " + str(page_number))
     url = search_page_url(search_area_name, guests, neighborhood, room_type,
                           page_number)
     time.sleep(3.0 * random.random())
@@ -954,6 +978,7 @@ def searcher(survey_id, flag):
                 "Entire home/apt",
                 "Shared room",
                 ):
+            logger.debug("Searching for %(rt)s" % {"rt": room_type})
             for neighborhood in neighborhoods:
                 if room_type in ("Private room", "Shared room"):
                     max_guests = 4
@@ -969,9 +994,11 @@ def searcher(survey_id, flag):
                             if count == 1:
                                 logger.debug("\t...page already visited")
                                 continue
-                            if count == 0:
+                            elif count == 0:
                                 logger.debug("\t...page already visited")
                                 break
+                            else:
+                                logger.debug("\t...visiting page")
                         room_count = ws_get_search_page_info(
                             survey_id,
                             search_area_name,
@@ -985,9 +1012,10 @@ def searcher(survey_id, flag):
                         if flag == FLAGS_PRINT:
                             return
     except KeyboardInterrupt:
-        sys.exit()
+        raise
     except:
-        traceback.print_exc(file=sys.stdout)
+        logger.error("Error while searching")
+        raise
 
 
 def ws_get_city_info(city, flag):
@@ -1032,13 +1060,12 @@ def ws_get_city_info(city, flag):
                             on existing skip
                             values (?,?)"""
                     cur.execute(sql_city, (city, search_area_id,))
-                    conn.commit()
                     logger.info("Added city " + city)
+                    logger.debug(str(len(neighborhoods)) + " neighborhoods")
                 if len(neighborhoods) > 0:
                     sql_neighborhood = """
                         insert
                         into neighborhood(name, search_area_id)
-                        on existing skip
                         values(?, ?)
                         """
                     for neighborhood in neighborhoods:
@@ -1047,6 +1074,7 @@ def ws_get_city_info(city, flag):
                         logger.info("Added neighborhood " + neighborhood)
                 else:
                     logger.info("No neighborhoods found for " + city)
+                conn.commit()
         except UnicodeEncodeError:
             #if sys.version_info >= (3,):
             #    logger.info(s.encode('utf8').decode(sys.stdout.encoding))
@@ -1055,10 +1083,11 @@ def ws_get_city_info(city, flag):
             # unhandled at the moment
             pass
         except:
-            traceback.print_exc(file=sys.stdout)
             logger.error("Error collecting city and neighborhood information")
+            raise
     except:
-        traceback.print_exc(file=sys.stdout)
+        logger.error("Error getting city info from website")
+        raise
 
 
 def main():
@@ -1079,6 +1108,9 @@ def main():
                        metavar='search_area', type=str,
                        help="""add a survey entry to the database,
                        for search_area""")
+    group.add_argument('-dbi', '--dbinit',
+                       action='store_true', default=False,
+                       help='Initialize the database file')
     group.add_argument('-dh', '--displayhost',
                        metavar='host_id', type=int,
                        help='display web page for host_id in browser')
@@ -1115,7 +1147,7 @@ def main():
                        help='search for rooms using survey survey_id')
     group.add_argument('-v', '--version',
                        action='version',
-                       version='%(prog)s, version of 2014-08-15')
+                       version='%(prog)s, version 2.1')
     group.add_argument('-?', action='help')
 
     args = parser.parse_args()
@@ -1131,6 +1163,8 @@ def main():
             ws_get_room_info(int(args.addroom), None, FLAGS_ADD)
         elif args.addsurvey:
             db_add_survey(args.addsurvey)
+        elif args.dbinit:
+            db_init()
         elif args.displayhost:
             display_host(args.displayhost)
         elif args.displayroom:
@@ -1150,9 +1184,11 @@ def main():
             searcher(args.printsearch, FLAGS_PRINT)
         else:
             parser.print_help()
-
+    except KeyboardInterrupt:
+        sys.exit()
     except:
-        traceback.print_exc(file=sys.stdout)
+        #traceback.print_exc(file=sys.stdout)
+        sys.exit()
 
 if __name__ == "__main__":
     main()
