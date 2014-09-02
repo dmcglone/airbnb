@@ -38,6 +38,7 @@ import os
 # CONSTANTS
 URL_ROOM_ROOT = "http://www.airbnb.com/rooms/"
 URL_HOST_ROOT = "https://www.airbnb.com/users/show/"
+URL_SEARCH_ROOT = "http://www.airbnb.com/s/"
 URL_TIMEOUT = 10.0
 FILL_MAX_ROOM_COUNT = 50000
 SEARCH_MAX_PAGES = 100
@@ -46,7 +47,7 @@ FLAGS_ADD = 1
 FLAGS_PRINT = 9
 FLAGS_INSERT_REPLACE = True
 FLAGS_INSERT_NO_REPLACE = False
-DB_NAME = "airbnb"
+DB_NAME = "dbnb"
 DB_SERVERNAME = DB_NAME
 DB_DIR = os.path.dirname(os.path.realpath(__file__)) + "/db"
 DB_FILE = DB_DIR + "/" + DB_NAME + ".db"
@@ -886,7 +887,7 @@ def db_get_neighborhood_id(survey_id, neighborhood):
 
 def search_page_url(search_area_name, guests, neighborhood, room_type,
                     page_number):
-    url_root = "http://www.airbnb.com/s/" + search_area_name
+    url_root = URL_SEARCH_ROOT + search_area_name
     url_suffix = "guests=" + str(guests)
     url_suffix += "&"
     url_suffix += urllib.parse.quote("neighborhoods[]")
@@ -1020,7 +1021,7 @@ def searcher(survey_id, flag):
 
 def ws_get_city_info(city, flag):
     try:
-        url = "https://www.airbnb.com/s/" + city
+        url = URL_SEARCH_ROOT + city
         page = ws_get_page(url)
         if page is False:
             return False
