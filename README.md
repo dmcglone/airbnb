@@ -14,7 +14,8 @@ Airbnb's web site for a given city and has more options. I have moved it to
 python 3 for better handling of unicode multi-lingual data. It is also ported
 to SAP SQL Anywhere to allow more flexible reporting and better concurrency
 than SQLite can provide. A free developer edition is available from the SAP web
-site. 
+site. You may need to configure the python driver following the instructions
+given in http://dcx.sybase.com/index.html#sa160/en/dbprogramming/pg-python.html.
 
 - airbnb.py is the python script to collect data.
 - plot.py just produces some charts.
@@ -28,12 +29,15 @@ Test that you can connect to the database: run =python airbnb.py -h= and
 confirm that there are no errors. If there are errors, check the database
 file setting near the top of the script and change its location.
 
+To create the database: =python airbnb.py -dbi=
+
 To run a survey:
-- add a city (search area) to the database, by running ./airbnb.py -ac
+- add a city (search area) to the database, by running ./airbnb.py -asa
   "city-name". It scans the Airbnb web site and adds the neighborhoods for the
   city.
-- add a survey to the database by running ./airbnb.py -as "city-name".
-- collect the room_ids for the city by running ./airbnb.py -s survey_id. The
+- add a survey to the database by running ./airbnb.py -asv "city-name". The
+  command lists the survey_id value that was created.
+- collect the room_ids for the survey by running ./airbnb.py -s survey_id. The
   survey_id can be seen by running ./airbnb -ls. This search loops over
   neighborhoods, property types, and pages of listings in the Airbnb search
   pages. 
