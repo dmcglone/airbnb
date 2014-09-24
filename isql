@@ -1,3 +1,2 @@
-#!/bin/bash
-# Run dbisql against the airbnb database
-"$SQLANY16/bin64/dbisql" -c "uid=dba;pwd=sql;eng=airbnb;dbf=~/src/airbnb/db/airbnb.db"
+# Run isql against the airbnb database
+"$SQLANY16/bin64/dbisql" -c "uid=dba;pwd=sql;eng=dbnb;dbf=./db/dbnb.db"

@@ -1,8 +1,11 @@
+*#
 /backup/*
 /db/*
 /doc/*
 /img/*
+/kml/*
 /maps/*
+/reports/*
 /res/*
 /sqlite/*
 /airbnb.xlsx

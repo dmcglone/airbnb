@@ -211,7 +211,7 @@ def db_init():
     except OSError:
         logger.error("Cannot create directory " + dbdir)
     except Exception as e:
-        logger.error("Cannot create database file" + e.message )
+        logger.error("Cannot create database file" + e.message)
         raise
 
 
@@ -324,8 +324,8 @@ def db_get_room_to_fill():
         return (room_id, survey_id)
     except TypeError:
         cur.close()
-        logger.info("No unfilled rooms in database")
-        raise
+        logger.info("-- Finishihg: no unfilled rooms in database --")
+        sys.exit(0)
     except:
         logger.error("Error retrieving room to fill from db")
         cur.close()
@@ -409,27 +409,33 @@ def ws_get_page(url):
     # see http://webscraping.com/blog/Scraping-JavaScript-webpages-with-webkit/
     #r = Render(url)
     #page = r.frame.toHtml()
-    attempt = 0
-    for attempt in range(5):
-        try:
-            response = urllib.request.urlopen(url, timeout=URL_TIMEOUT)
-            page = response.read()
-            break
-        except KeyboardInterrupt:
-            raise
-        except:
-            if attempt > MAX_CONNECTION_ATTEMPTS:
-                logger.error("Probable connectivity problem retrieving "
-                             "web page")
-                # traceback.print_exc(file=sys.stdout)
-                raise
-    return page
+    try:
+        attempt = 0
+        for attempt in range(MAX_CONNECTION_ATTEMPTS):
+            try:
+                response = urllib.request.urlopen(url, timeout=URL_TIMEOUT)
+                page = response.read()
+                break
+            except KeyboardInterrupt:
+                sys.exit()
+            except Exception as e:
+                if attempt >= (MAX_CONNECTION_ATTEMPTS - 1):
+                    logger.error("Probable connectivity problem retrieving "
+                                 "web page")
+                    raise
+        return page
+    except urllib.error.URLError:
+        logger.error("URLError retrieving page")
+        raise
+    except Exception as e:
+        logger.error("Exception retrieving page: " + str(type(e)))
+        raise
 
 
 def ws_get_room_info(room_id, survey_id, flag):
     try:
         # initialization
-        logger.info("Getting info for room " + str(room_id)
+        logger.info("Getting room " + str(room_id)
                     + " from Airbnb web site")
         room_url = URL_ROOM_ROOT + str(room_id)
         page = ws_get_page(room_url)
@@ -445,8 +451,9 @@ def ws_get_room_info(room_id, survey_id, flag):
     except KeyboardInterrupt:
         logger.error("Keyboard interrupt")
         raise
-    except:
-        logger.error("Failed to get room " + str(room_id) + " from web site")
+    except Exception as e:
+        logger.error("Failed to get room " + str(room_id) + " from web site.")
+        logger.error("Exception: " + str(type(e)))
         raise
 
 
@@ -779,9 +786,9 @@ def display_host(host_id):
 
 
 def fill_loop_by_room():
-    try:
-        room_count = 0
-        while room_count < FILL_MAX_ROOM_COUNT:
+    room_count = 0
+    while room_count < FILL_MAX_ROOM_COUNT:
+        try:
             (room_id, survey_id) = db_get_room_to_fill()
             if room_id is None:
                 break
@@ -789,11 +796,9 @@ def fill_loop_by_room():
                 time.sleep(3.0 * random.random())
                 if(ws_get_room_info(room_id, survey_id, FLAGS_ADD)):
                     room_count += 1
-    except TypeError as te:
-        raise
-    except:
-        logger.error("Error in fill_loop_by_room")
-        raise
+        except Exception as e:
+            logger.error("Error in fill_loop_by_room:" + str(type(e)))
+            raise
 
 
 def db_get_search_area_from_survey_id(survey_id):
@@ -909,64 +914,69 @@ def search_page_url(search_area_name, guests, neighborhood, room_type,
 
 def ws_get_search_page_info(survey_id, search_area_name, room_type,
                             neighborhood, guests, page_number, flag):
-    logger.info(
-        room_type + ", " +
-        neighborhood + ", " +
-        str(guests) + " guests, " +
-        "page " + str(page_number))
-    url = search_page_url(search_area_name, guests, neighborhood, room_type,
-                          page_number)
-    time.sleep(3.0 * random.random())
-    page = ws_get_page(url)
-    if page is False:
-        return 0
-    tree = html.fromstring(page)
-    room_elements = tree.xpath(
-        "//div[@class='listing']/@data-id"
-    )
-    logger.debug("Found " + str(len(room_elements)) + " rooms.")
-    neighborhood_id = db_get_neighborhood_id(
-        survey_id, neighborhood)
-    room_count = len(room_elements)
-    if room_count > 0:
-        has_rooms = 1
-    else:
-        has_rooms = 0
-    if flag == FLAGS_ADD:
-        db_save_survey_search_page(survey_id, room_type,
-                                   neighborhood_id, guests,
-                                   page_number, has_rooms)
-    if room_count > 0:
-        for room_element in room_elements:
-            room_id = int(room_element)
-            if room_id is not None:
-                room_info = (
-                    room_id,
-                    None,  # host_id,
-                    room_type,  # room_type,
-                    None,  # country,
-                    None,  # city,
-                    None,  # neighborhood,
-                    None,  # address,
-                    None,  # reviews,
-                    None,  # overall_satisfaction
-                    None,  # accommodates
-                    None,  # bedrooms
-                    None,  # bathrooms
-                    None,  # price
-                    0,     # deleted
-                    None,  # minstay
-                    None,  # latitude
-                    None,  # longitude
-                    survey_id,  # survey_id
-                    )
-                if flag == FLAGS_ADD:
-                    db_save_room_info(room_info, FLAGS_INSERT_NO_REPLACE)
-                elif flag == FLAGS_PRINT:
-                    print(room_info[2], room_info[0])
-    else:
-        logger.info("No rooms found")
-    return room_count
+    try:
+        logger.info(
+            room_type + ", " +
+            neighborhood + ", " +
+            str(guests) + " guests, " +
+            "page " + str(page_number))
+        url = search_page_url(search_area_name, guests,
+                              neighborhood, room_type,
+                              page_number)
+        time.sleep(3.0 * random.random())
+        page = ws_get_page(url)
+        if page is False:
+            return 0
+        tree = html.fromstring(page)
+        room_elements = tree.xpath(
+            "//div[@class='listing']/@data-id"
+        )
+        logger.debug("Found " + str(len(room_elements)) + " rooms.")
+        neighborhood_id = db_get_neighborhood_id(
+            survey_id, neighborhood)
+        room_count = len(room_elements)
+        if room_count > 0:
+            has_rooms = 1
+        else:
+            has_rooms = 0
+        if flag == FLAGS_ADD:
+            db_save_survey_search_page(survey_id, room_type,
+                                       neighborhood_id, guests,
+                                       page_number, has_rooms)
+        if room_count > 0:
+            for room_element in room_elements:
+                room_id = int(room_element)
+                if room_id is not None:
+                    room_info = (
+                        room_id,
+                        None,  # host_id,
+                        room_type,  # room_type,
+                        None,  # country,
+                        None,  # city,
+                        None,  # neighborhood,
+                        None,  # address,
+                        None,  # reviews,
+                        None,  # overall_satisfaction
+                        None,  # accommodates
+                        None,  # bedrooms
+                        None,  # bathrooms
+                        None,  # price
+                        0,     # deleted
+                        None,  # minstay
+                        None,  # latitude
+                        None,  # longitude
+                        survey_id,  # survey_id
+                        )
+                    if flag == FLAGS_ADD:
+                        db_save_room_info(room_info, FLAGS_INSERT_NO_REPLACE)
+                    elif flag == FLAGS_PRINT:
+                        print(room_info[2], room_info[0])
+        else:
+            logger.info("No rooms found")
+        return room_count
+    except:
+        logger.error("Error getting page information")
+        raise
 
 
 def searcher(survey_id, flag):
@@ -1188,7 +1198,7 @@ def main():
     except KeyboardInterrupt:
         sys.exit()
     except:
-        #traceback.print_exc(file=sys.stdout)
+        traceback.print_exc(file=sys.stdout)
         sys.exit()
 
 if __name__ == "__main__":
