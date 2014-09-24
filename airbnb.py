@@ -52,6 +52,7 @@ DB_SERVERNAME = DB_NAME
 DB_DIR = os.path.dirname(os.path.realpath(__file__)) + "/db"
 DB_FILE = DB_DIR + "/" + DB_NAME + ".db"
 MAX_CONNECTION_ATTEMPTS = 5
+SCRIPT_VERSION_NUMBER = 2.2
 
 # Set up logging
 logger = logging.getLogger()
@@ -1158,7 +1159,7 @@ def main():
                        help='search for rooms using survey survey_id')
     group.add_argument('-v', '--version',
                        action='version',
-                       version='%(prog)s, version 2.1')
+                       version='%(prog)s, version SCRIPT_VERSION_NUMBER')
     group.add_argument('-?', action='help')
 
     args = parser.parse_args()
