@@ -1,6 +1,20 @@
 Notes on Airbnb business in New York and elsewhere
 ==================================================
 
+Disclaimer
+----------
+The script scrapes the Airbnb web site to collect data about the shape of
+the company's business. No guarantees are made about the quality of data
+obtained using this script, statistically or about an individual page. So 
+please check your results.
+
+Changelog
+---------
+
+2014-09-23      Tom Slee
+Bug fixes that solve problems where over-eager exception handling 
+caused the script to exit too early.
+
 2014-08-26      Tom Slee
 
 Version 2.1 is updated to be able to collect data from Airbnb's updated web
