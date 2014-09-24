@@ -1198,7 +1198,7 @@ def main():
     except KeyboardInterrupt:
         sys.exit()
     except:
-        traceback.print_exc(file=sys.stdout)
+        #traceback.print_exc(file=sys.stdout)
         sys.exit()
 
 if __name__ == "__main__":
