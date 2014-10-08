@@ -1,10 +1,13 @@
 *#
+*.swp
+*~
 /backup/*
 /db/*
 /doc/*
 /img/*
 /kml/*
 /maps/*
+/db2/*
 /reports/*
 /res/*
 /sqlite/*
