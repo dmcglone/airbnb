@@ -8,7 +8,7 @@
 #   db_get = get from database
 #   db_add = add to the database
 #
-# usage conventions:
+# function name conventions:
 #   add = add to database
 #   display = open a browser and show
 #   list = get from database and print
@@ -22,8 +22,6 @@ import traceback
 import time
 import random
 import subprocess
-#import codecs
-#from cssselect import HTMLTranslator, SelectorError
 import urllib.request
 import urllib.parse
 from lxml import html
@@ -37,7 +35,7 @@ import os
 
 # CONSTANTS
 URL_ROOM_ROOT = "http://www.airbnb.com/rooms/"
-URL_HOST_ROOT = "https://www.airbnb.com/users/show/"
+URL_HOST_ROOT = "http://www.airbnb.com/users/show/"
 URL_SEARCH_ROOT = "http://www.airbnb.com/s/"
 URL_TIMEOUT = 10.0
 FILL_MAX_ROOM_COUNT = 50000
