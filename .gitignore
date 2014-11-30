@@ -1,4 +1,5 @@
 *#
+/.ipynb_checkpoints/*
 /backup/*
 /db/*
 /doc/*
@@ -17,3 +18,7 @@
 /test.log
 /airbnb.log
 /run.log
+client.id
+dbnb.log
+peers.csv
+run.sh
