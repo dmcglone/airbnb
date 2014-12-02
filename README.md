@@ -11,6 +11,9 @@ please check your results.
 Changelog
 ---------
 
+2014-12-02      Tom Slee
+More robustness fixes.
+
 2014-09-23      Tom Slee
 Bug fixes that solve problems where over-eager exception handling 
 caused the script to exit too early.
@@ -39,11 +42,19 @@ airbnb.db is the data. The basic data is in the table *room*. A complete search 
 Using the script
 ----------------
 
-Test that you can connect to the database: run =python airbnb.py -h= and
-confirm that there are no errors. If there are errors, check the database
-file setting near the top of the script and change its location.
+To create the database: ~python airbnb.py -dbi~. This command does two things:
+- initializes a database file (dbnb.db in the current directory)
+- runs the reload.sql script against the database to create the tables, views,
+  and stored procedures that make up the database. No data is added.
 
-To create the database: =python airbnb.py -dbi=
+On Windows, the reload.sql script does not always run. If that fails, try this to create the database tables:
+- dbisql -c "uid=dba;pwd=sql;dbf=dbnb.db;eng=db"
+- From Interactive SQL, click File > Open and choose reload.sql from the 
+  current directory. Hit F5 to execute the script and create the tables.
+
+Test that you can connect to the database file: run ~python airbnb.py --dbping~
+and confirm that there are no errors. If there are errors, check the database
+file setting near the top of the script and change its location.
 
 To run a survey:
 - add a city (search area) to the database, by running ./airbnb.py -asa
@@ -57,4 +68,8 @@ To run a survey:
   pages. 
 - fill in the details of the rooms by running ./airbnb -f.
 
+If any step fails:
+- If the -s step or the -f step fails (say because the internet connection was
+  lost), you can just run it again, and it will pick up from where it left off
+  without losing data. Continue until the script completes.
 

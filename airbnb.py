@@ -56,7 +56,7 @@ SCRIPT_VERSION_NUMBER = 2.2
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.INFO)
+console_handler.setLevel(logging.DEBUG)
 ch_formatter = logging.Formatter('%(levelname)-8s%(message)s')
 console_handler.setFormatter(ch_formatter)
 filelog_handler = logging.FileHandler("run.log")
@@ -220,6 +220,17 @@ def db_init():
     except Exception as e:
         logger.error("Cannot create database file" + e.message)
         raise
+
+
+def db_ping():
+    try:
+        conn = connect()
+        if conn is not None:
+            print("Connection test succeeded")
+        else:
+            print("Connection test failed")
+    except:
+        logger.error("Connection test failed")
 
 
 def db_add_survey(search_area):
@@ -1182,6 +1193,9 @@ def main():
     group.add_argument('-dbi', '--dbinit',
                        action='store_true', default=False,
                        help='Initialize the database file')
+    group.add_argument('-dbp', '--dbping',
+                       action='store_true', default=False,
+                       help='Test the database connection')
     group.add_argument('-dh', '--displayhost',
                        metavar='host_id', type=int,
                        help='display web page for host_id in browser')
@@ -1236,6 +1250,8 @@ def main():
             db_add_survey(args.addsurvey)
         elif args.dbinit:
             db_init()
+        elif args.dbping:
+            db_ping()
         elif args.displayhost:
             display_host(args.displayhost)
         elif args.displayroom:
@@ -1258,7 +1274,7 @@ def main():
     except KeyboardInterrupt:
         sys.exit()
     except:
-        # traceback.print_exc(file=sys.stdout)
+        traceback.print_exc(file=sys.stdout)
         sys.exit()
 
 if __name__ == "__main__":
