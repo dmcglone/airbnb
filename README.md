@@ -42,7 +42,7 @@ airbnb.db is the data. The basic data is in the table *room*. A complete search 
 Using the script
 ----------------
 
-To create the database: ~python airbnb.py -dbi~. This command does two things:
+To create the database: `python airbnb.py -dbi`. This command does two things:
 - initializes a database file (dbnb.db in the current directory)
 - runs the reload.sql script against the database to create the tables, views,
   and stored procedures that make up the database. No data is added.
@@ -52,7 +52,7 @@ On Windows, the reload.sql script does not always run. If that fails, try this t
 - From Interactive SQL, click File > Open and choose reload.sql from the 
   current directory. Hit F5 to execute the script and create the tables.
 
-Test that you can connect to the database file: run ~python airbnb.py --dbping~
+Test that you can connect to the database file: run `python airbnb.py --dbping`
 and confirm that there are no errors. If there are errors, check the database
 file setting near the top of the script and change its location.
 
