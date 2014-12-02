@@ -19,6 +19,7 @@
 /airbnb.log
 /run.log
 client.id
-dbnb.log
+/dbnb.log
+/dbnb.db
 peers.csv
 run.sh

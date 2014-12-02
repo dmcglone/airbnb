@@ -5,11 +5,11 @@
 --
 
 
--- Database file: /home/tom/src/airbnb/db/airbnb.db
+-- Database file: /home/tom/src/airbnb/dbnb.db
 -- Database CHAR collation: UTF8BIN, NCHAR collation: UCA
 -- Connection Character Set: UTF-8
 --
--- CREATE DATABASE command: CREATE DATABASE '/home/tom/src/airbnb/db/airbnb.db' LOG ON '/home/tom/src/airbnb/db/airbnb.log' PAGE SIZE 4096 COLLATION 'UTF8BIN(CaseSensitivity=Ignore)' NCHAR COLLATION 'UCA(CaseSensitivity=Ignore;AccentSensitivity=Ignore;PunctuationSensitivity=Primary)' BLANK PADDING OFF JCONNECT ON CHECKSUM ON SYSTEM PROC AS DEFINER OFF
+-- CREATE DATABASE command: CREATE DATABASE '/home/tom/src/airbnb/dbnb.db' LOG ON '/home/tom/src/airbnb/dbnb.log' PAGE SIZE 4096 COLLATION 'UTF8BIN(CaseSensitivity=Ignore)' NCHAR COLLATION 'UCA(CaseSensitivity=Ignore;AccentSensitivity=Ignore;PunctuationSensitivity=Primary)' BLANK PADDING OFF JCONNECT ON CHECKSUM ON SYSTEM PROC AS DEFINER OFF
 --
 
 
@@ -49831,35 +49831,6 @@ go
 SET TEMPORARY OPTION force_view_creation='ON'
 go
 
-create view "DBA"."host"
-  as select "room"."survey_id",
-    "room"."host_id","count"() as "rooms",
-    case when "count"() > 1 then 1 else 0 end as "multilister",
-    "sum"("room"."reviews") as "revs",
-    "count"(distinct "room"."address") as "addresses",
-    "sum"("room"."reviews"*"room"."price") as "income1",
-    "sum"("room"."reviews"*"room"."price"*"room"."minstay") as "income2"
-    from "DBA"."room" where
-    "room"."host_id" is not null
-    group by "room"."survey_id","room"."host_id"
-go
-
-COMMENT TO PRESERVE FORMAT ON VIEW "DBA"."host" IS 
-{create view host as
-select 
-    survey_id,
-    host_id, count(*) rooms,
-    case when count(*) > 1 then 1 else 0 end multilister,
-    sum(reviews) revs,
-    count(distinct address) addresses,
-    sum(reviews * price) income1,
-    sum(reviews * price * minstay) income2
-from room
-where host_id is not null
-group by survey_id, host_id
-}
-go
-
 create view "DBA"."city_survey"
   as select "sa"."name" as "city",
     "max"("s"."survey_id") as "newer",
@@ -49929,8 +49900,8 @@ create view "DBA"."churn_room"
     endif as "older_appearance",
     "cs"."newer",
     "cs"."older"
-    from "DBA"."room" as "r" join "DBA"."city_survey" as "cs"
-      on("r"."survey_id" = "cs"."newer"
+    from "DBA"."room" as "r" join "DBA"."city_survey" as "cs" on(
+      "r"."survey_id" = "cs"."newer"
       or "r"."survey_id" = "cs"."older")
     group by "cs"."city","r"."room_id","cs"."newer","cs"."older"
 go
@@ -50104,6 +50075,113 @@ on cs.newer = r.survey_id
 }
 go
 
+create view "DBA"."survey_room_types"( "survey","city","listings","bookings",
+  "private_rooms","entire_homes","shared_rooms",
+  "private_room_bookings","entire_home_bookings","shared_room_bookings",
+  "private_room_revenue","entire_home_revenue","shared_room_revenue" ) 
+  as select "t"."survey","t"."city","count"() as "listings",
+    "sum"("t"."reviews") as "bookings",
+    "sum"("t"."private_room") as "private_rooms",
+    "sum"("t"."entire_home") as "entire_homes",
+    "sum"("t"."shared_room") as "shared_rooms",
+    "sum"("t"."private_room"*"t"."reviews") as "private_room_bookings",
+    "sum"("t"."entire_home"*"t"."reviews") as "entire_home_bookings",
+    "sum"("t"."shared_room"*"t"."reviews") as "shared_room_bookings",
+    "sum"("t"."private_room"*"t"."reviews"*"t"."price") as "private_room_revenue",
+    "sum"("t"."entire_home"*"t"."reviews"*"t"."price") as "entire_home_revenue",
+    "sum"("t"."shared_room"*"t"."reviews"*"t"."price") as "shared_room_revenue"
+    from(select "s"."survey_id" as "survey",
+        "sa"."name" as "city",
+        "r"."room_id",
+        case when "r"."room_type" = 'Private room' then 1 else 0 end as "private_room",
+        case when "r"."room_type" = 'Entire home/apt' then 1 else 0 end as "entire_home",
+        case when "r"."room_type" = 'Shared room' then 1 else 0 end as "shared_room",
+        "r"."reviews",
+        "r"."price",
+        "r"."minstay"
+        from "DBA"."room" as "r" join "DBA"."survey" as "s" join "DBA"."search_area" as "sa"
+          on "r"."survey_id" = "s"."survey_id"
+          and "s"."search_area_id" = "sa"."search_area_id"
+        where "r"."deleted" = 0 and
+        "r"."price" is not null) as "t"
+    group by "t"."survey","t"."city"
+    order by "t"."survey" asc,"t"."city" asc
+go
+
+COMMENT ON VIEW "DBA"."survey_room_types" IS 
+	'List a breakdown of stats by room type, for each survey'
+go
+
+COMMENT TO PRESERVE FORMAT ON VIEW "DBA"."survey_room_types" IS 
+{create VIEW DBA."survey_room_types"( survey, city, listings, bookings, 
+    private_rooms, entire_homes, shared_rooms, 
+    private_room_bookings, entire_home_bookings, shared_room_bookings, 
+    private_room_revenue, entire_home_revenue, shared_room_revenue)
+AS
+select  survey, city, count(*) listings,
+        sum(reviews) bookings,
+        sum(private_room) private_rooms,
+        sum(entire_home) entire_homes,
+        sum(shared_room) shared_rooms,
+        sum(private_room * reviews) private_room_bookings,
+        sum(entire_home * reviews) entire_home_bookings,
+        sum(shared_room * reviews) shared_room_bookings,
+        sum(private_room * reviews * price) private_room_revenue,
+        sum(entire_home * reviews * price) entire_home_revenue,
+        sum(shared_room * reviews * price) shared_room_revenue       
+from
+( select 
+        s.survey_id survey,
+        sa.name city,
+        r.room_id,
+        case when room_type = 'Private room' then 1 else 0 end private_room,
+        case when room_type = 'Entire home/apt' then 1 else 0 end entire_home,
+        case when room_type = 'Shared room' then 1 else 0 end shared_room,
+        reviews,
+        price,
+        minstay
+    from room r join survey s join search_area sa
+    on r.survey_id = s.survey_id
+    and s.search_area_id = sa.search_area_id
+    where deleted = 0
+    and r.price is not null
+    ) t
+group by survey, city
+order by survey, city
+}
+go
+
+create view "DBA"."host"
+  as select "room"."survey_id",
+    "room"."host_id",
+    "count"() as "rooms",
+    case when "count"() > 1 then 1 else 0 end as "multilister",
+    "sum"("room"."reviews") as "review_count",
+    "count"(distinct "room"."address") as "addresses",
+    "sum"("room"."reviews"*"room"."price") as "income1",
+    "sum"("room"."reviews"*"room"."price"*"room"."minstay") as "income2"
+    from "DBA"."room" where
+    "room"."host_id" is not null
+    group by "room"."survey_id","room"."host_id"
+go
+
+COMMENT TO PRESERVE FORMAT ON VIEW "DBA"."host" IS 
+{create VIEW DBA."host" as
+select 
+    survey_id,
+    host_id, 
+    count(*) rooms,
+    case when count(*) > 1 then 1 else 0 end multilister,
+    sum(reviews) review_count,
+    count(distinct address) addresses,
+    sum(reviews * price) income1,
+    sum(reviews * price * minstay) income2
+from room
+where host_id is not null
+group by survey_id, host_id
+}
+go
+
 SET TEMPORARY OPTION force_view_creation='OFF'
 go
 
@@ -50158,6 +50236,10 @@ begin
 end
 go
 
+COMMENT ON PROCEDURE "DBA"."survey_room" IS 
+	'List rooms from the specified survey'
+go
+
 COMMENT TO PRESERVE FORMAT ON PROCEDURE "DBA"."survey_room" IS 
 {create PROCEDURE DBA."survey_room"( IN @survey_id INTEGER )
 result (
@@ -50206,6 +50288,10 @@ begin
     from "survey_room"(@survey_id)
     group by "host_id"
 end
+go
+
+COMMENT ON PROCEDURE "DBA"."survey_host" IS 
+	'List information about hosts for a survey'
 go
 
 COMMENT TO PRESERVE FORMAT ON PROCEDURE "DBA"."survey_host" IS 
@@ -50278,7 +50364,25 @@ result(
   "longitude" numeric(30,6),
   "survey_id" integer ) 
 begin
-  select "r".*
+  select "r"."room_id",
+    "r"."host_id",
+    "r"."room_type",
+    "r"."country",
+    "r"."city",
+    "r"."neighborhood",
+    "r"."address",
+    "r"."reviews",
+    "r"."overall_satisfaction",
+    "r"."accommodates",
+    "r"."bedrooms",
+    "r"."bathrooms",
+    "r"."price",
+    "r"."deleted",
+    "r"."minstay",
+    "r"."last_modified",
+    "r"."latitude",
+    "r"."longitude",
+    "r"."survey_id"
     from "room" as "r"
       join(select "room_id","max"("r"."survey_id") as "survey_id","count"() as "occurrences"
         from "room" as "r" join "survey" as "s" join "search_area" as "sa"
@@ -50321,7 +50425,25 @@ longitude numeric(30,6),
 survey_id int
 )
 begin
-    select r.* 
+    select r.room_id,
+    r.host_id,
+    r.room_type,
+    r.country,
+    r.city,
+    r.neighborhood,
+    r.address,
+    r.reviews,
+    r.overall_satisfaction,
+    r.accommodates,   
+    r.bedrooms,
+    r.bathrooms,
+    r.price,
+    r.deleted,
+    r.minstay,
+    r.last_modified,
+    r.latitude,
+    r.longitude,
+    r.survey_id 
     from room r join 
         (
         select room_id, max(r.survey_id) survey_id, count(*) occurrences
@@ -50423,6 +50545,10 @@ begin
 end
 go
 
+COMMENT ON PROCEDURE "DBA"."lost_host" IS 
+	'List hosts who have left the site between the earliest and latest surveys, for a city'
+go
+
 COMMENT TO PRESERVE FORMAT ON PROCEDURE "DBA"."lost_host" IS 
 {create procedure lost_host(@search_area_name varchar(255))
 begin
@@ -50450,6 +50576,10 @@ begin
       from "search_area"
       where "name" = @city
 end
+go
+
+COMMENT ON PROCEDURE "DBA"."add_survey" IS 
+	'Add a survey to the database.'
 go
 
 COMMENT TO PRESERVE FORMAT ON PROCEDURE "DBA"."add_survey" IS 
@@ -50496,6 +50626,10 @@ begin
 end
 go
 
+COMMENT ON PROCEDURE "DBA"."survey_hosts" IS 
+	'List information about all hosts, grouped by survey'
+go
+
 COMMENT TO PRESERVE FORMAT ON PROCEDURE "DBA"."survey_hosts" IS 
 {create procedure survey_hosts()
 begin
@@ -50534,73 +50668,6 @@ end
 }
 go
 
-create procedure "DBA"."survey_room_types"()
-begin
-  select "survey","city","count"() as "listings",
-    "sum"("reviews") as "bookings",
-    "sum"("private_room") as "private_rooms",
-    "sum"("entire_home") as "entire_homes",
-    "sum"("shared_room") as "shared_rooms",
-    "sum"("private_room"*"reviews") as "private_room_bookings",
-    "sum"("entire_home"*"reviews") as "entire_home_bookings",
-    "sum"("shared_room"*"reviews") as "shared_room_bookings",
-    "sum"("private_room"*"reviews"*"price") as "private_room_revenue",
-    "sum"("entire_home"*"reviews"*"price") as "entire_home_revenue",
-    "sum"("shared_room"*"reviews"*"price") as "shared_room_revenue"
-    from(select "s"."survey_id" as "survey",
-        "sa"."name" as "city",
-        "r"."room_id",
-        case when "room_type" = 'Private room' then 1 else 0 end as "private_room",
-        case when "room_type" = 'Entire home/apt' then 1 else 0 end as "entire_home",
-        case when "room_type" = 'Shared room' then 1 else 0 end as "shared_room",
-        "reviews",
-        "price",
-        "minstay"
-        from "room" as "r" join "survey" as "s" join "search_area" as "sa"
-          on "r"."survey_id" = "s"."survey_id"
-          and "s"."search_area_id" = "sa"."search_area_id"
-        where "deleted" = 0
-        and "r"."price" is not null) as "t"
-    group by "survey","city"
-end
-go
-
-COMMENT TO PRESERVE FORMAT ON PROCEDURE "DBA"."survey_room_types" IS 
-{create procedure survey_room_types()
-begin
-select  survey, city, count(*) listings,
-        sum(reviews) bookings,
-        sum(private_room) private_rooms,
-        sum(entire_home) entire_homes,
-        sum(shared_room) shared_rooms,
-        sum(private_room * reviews) private_room_bookings,
-        sum(entire_home * reviews) entire_home_bookings,
-        sum(shared_room * reviews) shared_room_bookings       ,
-        sum(private_room * reviews * price) private_room_revenue,
-        sum(entire_home * reviews * price) entire_home_revenue,
-        sum(shared_room * reviews * price) shared_room_revenue       
-from
-( select 
-        s.survey_id survey,
-        sa.name city,
-        r.room_id,
-        case when room_type = 'Private room' then 1 else 0 end private_room,
-        case when room_type = 'Entire home/apt' then 1 else 0 end entire_home,
-        case when room_type = 'Shared room' then 1 else 0 end shared_room,
-        reviews,
-        price,
-        minstay
-    from room r join survey s join search_area sa
-    on r.survey_id = s.survey_id
-    and s.search_area_id = sa.search_area_id
-    where deleted = 0
-    and r.price is not null
-    ) t
-group by survey, city
-end
-}
-go
-
 create procedure "DBA"."lost_rooms"( @old_survey integer,@new_survey integer ) 
 begin
   select "room_id" from "survey_room"(@old_survey) except
@@ -50634,6 +50701,10 @@ begin
 end
 go
 
+COMMENT ON PROCEDURE "DBA"."new_room" IS 
+	'List rooms that have appeared on the site between the earliest and latest surveys, for a city.'
+go
+
 COMMENT TO PRESERVE FORMAT ON PROCEDURE "DBA"."new_room" IS 
 {create PROCEDURE DBA."new_room"(@search_area_name varchar(255))
 begin
@@ -50654,6 +50725,147 @@ select room_id from survey_room(@old_survey_id)
 );
 end
 }
+go
+
+create procedure "DBA"."room_income"( in @survey_id integer ) 
+result( "room_id" integer,"room_type" varchar(255),"price" real,"income" real,"rank" integer,"lon" numeric(30,6),"lat" numeric(30,6) ) 
+begin
+  select "room_id",
+    "room_type",
+    "price",
+    ("price"*"reviews") as "income",
+    "row_number"() over("window_income") as "rank",
+    "longitude" as "lon",
+    "latitude" as "lat"
+    from "room"
+    where "survey_id" = @survey_id
+    and "price" is not null window "window_income" as(order by
+    "income" desc)
+end
+go
+
+COMMENT TO PRESERVE FORMAT ON PROCEDURE "DBA"."room_income" IS 
+{create procedure room_income(@survey_id int) 
+result ( room_id int, room_type varchar(255), price float, income float, rank int, lon numeric(30,6), lat numeric(30,6))
+begin
+select room_id, 
+    room_type, 
+    price, 
+    (price * reviews) as income,
+    row_number() over (window_income) as "rank",
+    longitude AS lon, 
+    latitude AS lat  
+FROM room  
+where survey_id = @survey_id
+and price is not null
+WINDOW window_income AS ( ORDER BY income desc )
+end
+}
+go
+
+create procedure "DBA"."export_survey_csv"( in @survey_id integer ) 
+begin
+  declare @filename varchar(255);
+  set @filename = './reports/survey_' || convert(varchar(4),@survey_id) || '.csv';
+  unload
+    select "room_id","host_id","room_type",
+      "country","city","neighborhood","address",
+      "reviews","overall_satisfaction",
+      "accommodates","bedrooms","bathrooms",
+      "price","minstay",
+      "latitude","longitude"
+      from "room"
+      where "survey_id" = @survey_id into client file
+    @filename
+end
+go
+
+COMMENT ON PROCEDURE "DBA"."export_survey_csv" IS 
+	'Export a survey in such a way that it can be imported into Google Fusion Tables.'
+go
+
+COMMENT TO PRESERVE FORMAT ON PROCEDURE "DBA"."export_survey_csv" IS 
+{create PROCEDURE DBA."export_survey_csv"( IN @survey_id INTEGER )
+BEGIN  
+    DECLARE @filename VARCHAR(255);
+    SET @filename = './reports/survey_' || convert(VARCHAR(4), @survey_id) || '.csv';
+    unload 
+        select 
+            room_id, host_id, room_type, 
+            country, city, neighborhood, address,
+            reviews, overall_satisfaction, 
+            accommodates, bedrooms, bathrooms,
+            price, minstay, 
+            latitude, longitude 
+        from room
+        where survey_id = @survey_id
+    into client file @filename
+END
+}
+go
+
+create procedure "DBA"."export_survey_fusion_table_kml"( in @survey_id integer ) 
+begin
+  declare @result xml;
+  declare @filename varchar(255);
+  set @filename = './kml/survey_' || convert(varchar(4),@survey_id) || '.kml';
+  select '<?xml version="1.0" encoding="UTF-8"?>  \x0A    <kml xmlns="http://www.opengis.net/kml/2.2">  \x0A    <Document>\x0A    '
+     || "LIST"(
+    "XMLGEN"(
+    '  \x0A  <Placemark>  \x0A  <name>{$room_id}</name>  \x0A  <ExtendedData>\x0A  <Data name="room_type">\x0A    <value>{$room_type}</value>\x0A  </Data> \x0A  <Data name="price">\x0A      <value>{$price}</value>\x0A  </Data> \x0A  <Data name="income">\x0A      <value>{$income}</value>\x0A  </Data> \x0A  <Data name="rank">\x0A      <value>{$rank}</value>\x0A  </Data> \x0A  </ExtendedData>\x0A  <Point>  \x0A  <coordinates>{$lon},{$lat},0</coordinates>  \x0A  </Point>  \x0A  </Placemark>',
+    "room_id","room_type",
+    "price","income",
+    "rank","lon","lat"),null)
+     || '   \x0A   </Document>  \x0A</kml>'
+    into @result
+    from "room_income"(@survey_id);
+  call "xp_write_file"(@filename,@result)
+end
+go
+
+COMMENT ON PROCEDURE "DBA"."export_survey_fusion_table_kml" IS 
+	'Export a survey in such a way that it can be imported into Google Fusion Tables.'
+go
+
+COMMENT TO PRESERVE FORMAT ON PROCEDURE "DBA"."export_survey_fusion_table_kml" IS 
+'create PROCEDURE DBA."export_survey_fusion_table_kml"( IN @survey_id INTEGER )
+BEGIN  
+    DECLARE @result XML;  
+    DECLARE @filename VARCHAR(255);
+    SET @filename = ''./kml/survey_'' || convert(VARCHAR(4), @survey_id) || ''.kml'';
+  SELECT ''<?xml version="1.0" encoding="UTF-8"?>  
+    <kml xmlns="http://www.opengis.net/kml/2.2">  
+    <Document>
+    '' ||   
+  LIST(XMLGEN(''  
+  <Placemark>  
+  <name>{$room_id}</name>  
+  <ExtendedData>
+  <Data name="room_type">
+    <value>{$room_type}</value>
+  </Data> 
+  <Data name="price">
+      <value>{$price}</value>
+  </Data> 
+  <Data name="income">
+      <value>{$income}</value>
+  </Data> 
+  <Data name="rank">
+      <value>{$rank}</value>
+  </Data> 
+  </ExtendedData>
+  <Point>  
+  <coordinates>{$lon},{$lat},0</coordinates>  
+  </Point>  
+  </Placemark>'', 
+    room_id, room_type, 
+    price, income,
+    "rank", lon, lat), NULL)  ||''   
+   </Document>  
+</kml>'' INTO @result  
+FROM room_income(@survey_id); 
+  CALL xp_write_file(@filename, @result);  
+END'
 go
 
 begin 
