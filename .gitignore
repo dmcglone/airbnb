@@ -1,11 +1,17 @@
 *#
+<<<<<<< HEAD
 /.ipynb_checkpoints/*
+=======
+*.swp
+*~
+>>>>>>> a728f7d2214f8a51acd46ccdc9e3889b380e5d7b
 /backup/*
 /db/*
 /doc/*
 /img/*
 /kml/*
 /maps/*
+/db2/*
 /reports/*
 /res/*
 /sqlite/*

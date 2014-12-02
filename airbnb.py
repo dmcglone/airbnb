@@ -364,6 +364,16 @@ def db_get_search_area_from_survey_id(survey_id):
         raise
 
 
+def db_save_room_as_deleted(room_id, survey_id):
+    try:
+        sql = "update room set deleted = 1 where room_id = ? and survey_id = ?"
+        cur = conn.cursor()
+        cur.execute(sql, (room_id, survey_id))
+        cur.close()
+    except:
+        pass
+
+
 def db_save_room_info(room_info, insert_replace_flag):
     try:
         logger.debug("In save_room_info for room " + str(room_info))
@@ -1013,6 +1023,9 @@ def fill_loop_by_room():
                 time.sleep(3.0 * random.random())
                 if(ws_get_room_info(room_id, survey_id, FLAGS_ADD)):
                     room_count += 1
+        except AttributeError as ae:
+            logger.error("Attribute error: marking room as deleted.")
+            db_save_room_as_deleted(room_id, survey_id)
         except Exception as e:
             logger.error("Error in fill_loop_by_room:" + str(type(e)))
             raise
@@ -1245,7 +1258,7 @@ def main():
     except KeyboardInterrupt:
         sys.exit()
     except:
-        traceback.print_exc(file=sys.stdout)
+        # traceback.print_exc(file=sys.stdout)
         sys.exit()
 
 if __name__ == "__main__":
