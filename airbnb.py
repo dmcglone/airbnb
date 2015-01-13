@@ -50,13 +50,16 @@ DB_SERVERNAME = DB_NAME
 DB_DIR = os.path.dirname(os.path.realpath(__file__)) + "/db"
 DB_FILE = DB_DIR + "/" + DB_NAME + ".db"
 MAX_CONNECTION_ATTEMPTS = 5
-SCRIPT_VERSION_NUMBER = 2.2
+
+# Script version
+# 2.3 released Jan 12, 2015, to handle a web site update
+SCRIPT_VERSION_NUMBER = 2.3
 
 # Set up logging
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.DEBUG)
+console_handler.setLevel(logging.INFO)
 ch_formatter = logging.Formatter('%(levelname)-8s%(message)s')
 console_handler.setFormatter(ch_formatter)
 filelog_handler = logging.FileHandler("run.log")
@@ -335,7 +338,8 @@ def db_get_room_to_fill():
         sql = """
         select room_id, survey_id
         from room
-        where price is null and deleted != 1
+        where price is null
+        and deleted != 1
         order by rand()
         """
         conn = connect()
@@ -381,6 +385,7 @@ def db_save_room_as_deleted(room_id, survey_id):
         cur = conn.cursor()
         cur.execute(sql, (room_id, survey_id))
         cur.close()
+        conn.commit()
     except:
         pass
 
@@ -790,42 +795,60 @@ def get_room_info_from_page(page, room_id, survey_id, flag):
                 logger.warning("No host_id found for room " + str(room_id))
 
         # -- room type --
-        temp = tree.xpath(
+        # new page format 2014-12-26
+        temp3_entire = tree.xpath(
+            "//div[@id='summary']"
+            "//i[contains(concat(' ', @class, ' '), ' icon-entire-place ')]"
+            )
+        temp3_private = tree.xpath(
+            "//div[@id='summary']"
+            "//i[contains(concat(' ', @class, ' '), ' icon-private-room ')]"
+            )
+        temp3_shared = tree.xpath(
+            "//div[@id='summary']"
+            "//i[contains(concat(' ', @class, ' '), ' icon-shared-room ')]"
+            )
+        # updated format
+        temp2 = tree.xpath(
             "//div[@id='summary']"
             "//div[@class='panel-body']/div[@class='row'][2]"
             "/div[@class='col-9']"
             "//div[@class='col-3'][1]"
             "/text()"
             )
-        if len(temp) > 0:
-            room_type = temp[0].strip()
+        # try old page match
+        temp1 = tree.xpath(
+            "//table[@id='description_details']"
+            "//td[text()[contains(.,'Room type:')]]"
+            "/following-sibling::td/text()")
+        if len(temp3_entire) > 0:
+            room_type = "Entire home/apt"
+        elif len(temp3_private) > 0:
+            room_type = "Private room"
+        elif len(temp3_shared) > 0:
+            room_type = "Shared room"
+        elif len(temp2) > 0:
+            room_type = temp2[0].strip()
+        elif len(temp1) > 0:
+            room_type = temp1[0].strip()
         else:
-            # try old page match
-            temp = tree.xpath(
-                "//table[@id='description_details']"
-                "//td[text()[contains(.,'Room type:')]]"
-                "/following-sibling::td/text()")
-            if len(temp) > 0:
-                room_type = temp[0].strip()
-            else:
-                logger.warning("No room_type found for room " + str(room_id))
+            room_type = 'Unknown'
+            logger.warning("No room_type found for room " + str(room_id))
 
         # -- neighborhood --
-        temp = tree.xpath(
+        temp2 = tree.xpath(
             "//div[contains(@class,'rich-toggle')]/@data-address"
             )
-        if len(temp) > 0:
-            s = temp[0].strip()
+        temp1 = tree.xpath("//table[@id='description_details']"
+            "//td[text()[contains(.,'Neighborhood:')]]"
+            "/following-sibling::td/descendant::text()")
+        if len(temp2) > 0:
+            s = temp2[0].strip()
             neighborhood = s[s.find("(")+1:s.find(")")]
+        elif len(temp1) > 0:
+            neighborhood = temp1[0].strip()
         else:
-            # try old page match
-            temp = tree.xpath("//table[@id='description_details']"
-                              "//td[text()[contains(.,'Neighborhood:')]]"
-                              "/following-sibling::td/descendant::text()")
-            if len(temp) > 0:
-                neighborhood = temp[0].strip()
-            else:
-                logger.warning("No neighborhood found for room "
+            logger.warning("No neighborhood found for room "
                                + str(room_id))
 
         # -- address --
@@ -865,76 +888,100 @@ def get_room_info_from_page(page, room_id, survey_id, flag):
                 logger.info("No reviews found for room " + str(room_id))
 
         # -- accommodates --
-        temp = tree.xpath(
-            "//div[@id='summary']"
-            "//div[@class='panel-body']/div[@class='row'][2]"
-            "/div[@class='col-9']"
-            "//div[@class='col-3'][2]"
-            "/text()"
+        # new version Dec 2014
+        temp3 = tree.xpath(
+                "//div[@class='col-md-6']"
+                "/div[contains(text(),'Accommodates:')]"
+                "/strong/text()"
+                )
+        temp2 = tree.xpath(
+                "//div[@id='summary']"
+                "//div[@class='panel-body']/div[@class='row'][2]"
+                "/div[@class='col-9']"
+                "//div[@class='col-3'][2]"
+                "/text()"
+                )
+        temp1 = tree.xpath(
+            "//table[@id='description_details']"
+            "//td[contains(text(),'Accommodates:')]"
+            "/following-sibling::td/descendant::text()"
             )
-        if len(temp) > 0:
-            accommodates = temp[0].strip()
+        if len(temp3) > 0:
+            accommodates = temp3[0].strip()
+        elif len(temp2) > 0:
+            accommodates = temp2[0].strip()
+        elif len(temp1) > 0:
+            accommodates = temp1[0]
+        else:
+            logger.warning("No accommodates found for room "
+                           + str(room_id))
+        if accommodates != None:
             accommodates = accommodates.split('+')[0]
             accommodates = accommodates.split(' ')[0]
-        else:
-            # try old page match
-            temp = tree.xpath("//table[@id='description_details']"
-                              "//td[text()[contains(.,'Accommodates:')]]"
-                              "/following-sibling::td/descendant::text()")
-            if len(temp) > 0:
-                accommodates = temp[0]
-                accommodates = accommodates.split('+')[0]
-            else:
-                logger.warning("No accommodates found for room "
-                               + str(room_id))
 
         # -- bedrooms --
-        temp = tree.xpath(
+        # new version Dec 2014
+        temp3 = tree.xpath(
+                "//div[@class='col-md-6']"
+                "/div[contains(text(),'Bedrooms:')]"
+                "/strong/text()"
+                )
+        temp2 = tree.xpath(
             "//div[@id='summary']"
             "//div[@class='panel-body']/div[@class='row'][2]"
             "/div[@class='col-9']"
             "//div[@class='col-3'][3]"
             "/text()"
             )
-        if len(temp) > 0:
-            bedrooms = temp[0].strip()
+        temp1 = tree.xpath(
+            "//table[@id='description_details']"
+            "//td[contains(text(),'Bedrooms:')]"
+            "/following-sibling::td/descendant::text()")
+        if len(temp3) > 0:
+            bedrooms = temp3[0].strip()
+        elif len(temp2) > 0:
+            bedrooms = temp2[0].strip()
+        elif len(temp1) > 0:
+            bedrooms = temp1[0].split('+')[0]
+        else:
+            logger.warning("No bedrooms found for room " + str(room_id))
+        if bedrooms != None:
             bedrooms = bedrooms.split('+')[0]
             bedrooms = bedrooms.split(' ')[0]
-        else:
-            # try old page match
-            temp = tree.xpath(
-                "//table[@id='description_details']"
-                "//td[text()[contains(.,'Bedrooms:')]]"
-                "/following-sibling::td/descendant::text()")
-            if len(temp) > 0:
-                bedrooms = temp[0].split('+')[0]
-            else:
-                logger.warning("No bedrooms found for room " + str(room_id))
 
         # -- bathrooms --
-        temp = tree.xpath(
+        temp3 = tree.xpath(
+            "//div[@class='col-md-6']"
+            "/div[contains(text(),'Bathrooms')]"
+            "/strong/text()"
+            )
+        temp2 = tree.xpath(
             "//div[@id='details-column']"
             "//div[text()[contains(.,'Bathrooms:')]]"
             "/strong/text()"
             )
-        if len(temp) > 0:
-            bathrooms = temp[0].split('+')[0]
-        else:
+        temp1 = tree.xpath(
+            "//table[@id='description_details']"
+            "//td[text()[contains(.,'Bathrooms:')]]"
+            "/following-sibling::td/descendant::text()"
+            )
+        if len(temp3) > 0:
+            bathrooms = temp3[0].split('+')[0]
+        if len(temp2) > 0:
+            bathrooms = temp2[0].split('+')[0]
+        elif len(temp1) > 0:
             # try old page match
-            temp = tree.xpath(
-                "//table[@id='description_details']"
-                "//td[text()[contains(.,'Bathrooms:')]]"
-                "/following-sibling::td/descendant::text()"
-                )
-            if len(temp) > 0:
-                bathrooms = temp[0].split('+')[0]
-            else:
+            bathrooms = temp1[0].split('+')[0]
+        else:
                 logger.info("No bathrooms found for room " + str(room_id))
+        if bathrooms != None:
+            bathrooms = bathrooms.split('+')[0]
+            bathrooms = bathrooms.split(' ')[0]
 
         # -- minimum stay --
         temp = tree.xpath(
             "//div[@id='details-column']"
-            "//div[text()[contains(.,'Minimum Stay:')]]"
+            "//div[contains(text(),'Minimum Stay:')]"
             "/strong/text()"
             )
         if len(temp) > 0:
@@ -954,7 +1001,10 @@ def get_room_info_from_page(page, room_id, survey_id, flag):
                 logger.info("No minstay found for room " + str(room_id))
 
         # -- price --
-        temp = tree.xpath("//div[@id='price_amount']/text()")
+        # Find the price listed (which is returned in Cdn dollars)
+        temp = tree.xpath(
+                "//div[@id='price_amount']/text()"
+                )
         if len(temp) > 0:
             price = temp[0][1:]
             non_decimal = re.compile(r'[^\d.]+')
@@ -962,6 +1012,11 @@ def get_room_info_from_page(page, room_id, survey_id, flag):
         else:
             # old page match is the same
             logger.info("No price found for room " + str(room_id))
+        # Now find out if it's per night or per month (see if the per_night div
+        # is hidden)
+        per_month = tree.xpath("//div[@id='per_night' and @class='hide']")
+        if per_month:
+            price = int(int(price) / 30)
 
         room_info = (
             room_id,        host_id,    room_type,
